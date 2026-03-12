@@ -111,23 +111,25 @@ func (a *App) RemoveCmd(name string) error {
 
 // StartCmd starts a managed service
 func (a *App) StartCmd(name string) error {
-	svc := a.registry.GetService(name)
+	// Supports name:port format for disambiguation
+	allServices := a.registry.ListServices()
+	svc, errs := LookupServiceWithFallback(name, allServices)
 	if svc == nil {
-		return fmt.Errorf("service %q not found", name)
+		return fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; "))
 	}
 
-	fmt.Printf("Starting service %q...\n", name)
+	fmt.Printf("Starting service %q...\n", svc.Name)
 	pid, err := a.processManager.Start(svc)
 	if err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
 	// Update registry with new PID
-	if err := a.registry.UpdateServicePID(name, pid); err != nil {
+	if err := a.registry.UpdateServicePID(svc.Name, pid); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update registry: %v\n", err)
 	}
 
-	fmt.Printf("Service %q started with PID %d\n", name, pid)
+	fmt.Printf("Service %q started with PID %d\n", svc.Name, pid)
 	return nil
 }
 
@@ -226,40 +228,266 @@ func (a *App) StopCmd(identifier string) error {
 
 // RestartCmd restarts a managed service
 func (a *App) RestartCmd(name string) error {
-	svc := a.registry.GetService(name)
+	// Supports name:port format for disambiguation
+	allServices := a.registry.ListServices()
+	svc, errs := LookupServiceWithFallback(name, allServices)
 	if svc == nil {
-		return fmt.Errorf("service %q not found", name)
+		return fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; "))
 	}
 
 	// Stop if running
 	if svc.LastPID != nil && *svc.LastPID > 0 {
-		fmt.Printf("Stopping service %q...\n", name)
+		fmt.Printf("Stopping service %q...\n", svc.Name)
 		if err := a.processManager.Stop(*svc.LastPID, 5000000000); err != nil { // 5 second timeout
 			fmt.Fprintf(os.Stderr, "Warning: failed to stop service: %v\n", err)
 		}
 	}
 
 	// Start
-	fmt.Printf("Starting service %q...\n", name)
+	fmt.Printf("Starting service %q...\n", svc.Name)
 	pid, err := a.processManager.Start(svc)
 	if err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
 	// Update registry
-	if err := a.registry.UpdateServicePID(name, pid); err != nil {
+	if err := a.registry.UpdateServicePID(svc.Name, pid); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to update registry: %v\n", err)
 	}
 
-	fmt.Printf("Service %q restarted with PID %d\n", name, pid)
+	fmt.Printf("Service %q restarted with PID %d\n", svc.Name, pid)
+	return nil
+}
+
+// BatchStartCmd starts multiple services in sequence.
+// Expands glob patterns against service names before execution.
+// Continues processing after failures (partial failure handling).
+// Returns error if any service fails to start.
+func (a *App) BatchStartCmd(names []string) error {
+	if len(names) == 0 {
+		return fmt.Errorf("no service names provided")
+	}
+
+	// Expand glob patterns against registry
+	services := a.registry.ListServices()
+	expandedNames := ExpandPatterns(names, services)
+
+	if len(expandedNames) == 0 {
+		return fmt.Errorf("no services found matching patterns")
+	}
+
+	var anyFailure bool
+	var firstErr error
+
+	for _, name := range expandedNames {
+		// Check if service exists (supports name:port format)
+		allServices := a.registry.ListServices()
+		svc, errs := LookupServiceWithFallback(name, allServices)
+		if svc == nil {
+			fmt.Fprintf(os.Stderr, "Error: service identifier %q not found: %s\n", name, strings.Join(errs, ", "))
+			anyFailure = true
+			if firstErr == nil {
+				firstErr = fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; "))
+			}
+			continue
+		}
+
+		// Check if already running
+		if svc.LastPID != nil && *svc.LastPID > 0 && a.processManager.IsRunning(*svc.LastPID) {
+			fmt.Fprintf(os.Stderr, "Warning: service %q already running (PID %d)\n", name, *svc.LastPID)
+			continue
+		}
+
+		// Attempt to start
+		fmt.Printf("Starting service %q...\n", name)
+		pid, err := a.processManager.Start(svc)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to start service %q: %v\n", name, err)
+			anyFailure = true
+			if firstErr == nil {
+				firstErr = fmt.Errorf("failed to start %q: %w", name, err)
+			}
+			continue
+		}
+
+		// Update registry with new PID
+		if updateErr := a.registry.UpdateServicePID(name, pid); updateErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to update registry for %q: %v\n", name, updateErr)
+		}
+
+		fmt.Printf("Service %q started with PID %d\n", name, pid)
+	}
+
+	if anyFailure {
+		return firstErr
+	}
+	return nil
+}
+
+// BatchStopCmd stops multiple services in sequence.
+// Expands glob patterns against service names before execution.
+// Continues processing after failures (partial failure handling).
+// Returns error if any service fails to stop.
+func (a *App) BatchStopCmd(names []string) error {
+	if len(names) == 0 {
+		return fmt.Errorf("no service names provided")
+	}
+
+	// Expand glob patterns against registry
+	services := a.registry.ListServices()
+	expandedNames := ExpandPatterns(names, services)
+
+	if len(expandedNames) == 0 {
+		return fmt.Errorf("no services found matching patterns")
+	}
+
+	var anyFailure bool
+	var firstErr error
+
+	for _, name := range expandedNames {
+		// Check if service exists (supports name:port format)
+		allServices := a.registry.ListServices()
+		svc, errs := LookupServiceWithFallback(name, allServices)
+		if svc == nil {
+			fmt.Fprintf(os.Stderr, "Error: service identifier %q not found: %s\n", name, strings.Join(errs, ", "))
+			anyFailure = true
+			if firstErr == nil {
+				firstErr = fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; "))
+			}
+			continue
+		}
+
+		// Determine PID to stop
+		var targetPID int
+		if svc.LastPID != nil && *svc.LastPID > 0 {
+			targetPID = *svc.LastPID
+		} else {
+			// Service not running
+			fmt.Fprintf(os.Stderr, "Warning: service %q is not running\n", name)
+			continue
+		}
+
+		// Verify process is actually running
+		if !a.processManager.IsRunning(targetPID) {
+			fmt.Fprintf(os.Stderr, "Warning: service %q is not running (stale PID)\n", name)
+			if clrErr := a.registry.ClearServicePID(name); clrErr != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to clear PID for %q: %v\n", name, clrErr)
+			}
+			continue
+		}
+
+		// Attempt to stop
+		fmt.Printf("Stopping service %q (PID %d)...\n", name, targetPID)
+		if err := a.processManager.Stop(targetPID, 5000000000); err != nil { // 5 second timeout
+			if errors.Is(err, process.ErrNeedSudo) {
+				fmt.Fprintf(os.Stderr, "Error: requires sudo to terminate service %q (PID %d)\n", name, targetPID)
+			} else if isProcessFinishedErr(err) {
+				// Process already finished - clear PID and continue
+				if clrErr := a.registry.ClearServicePID(name); clrErr != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to clear PID for %q: %v\n", name, clrErr)
+				}
+				fmt.Printf("Service %q already stopped\n", name)
+				continue
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: failed to stop service %q: %v\n", name, err)
+				anyFailure = true
+				if firstErr == nil {
+					firstErr = fmt.Errorf("failed to stop %q: %w", name, err)
+				}
+				continue
+			}
+		}
+
+		fmt.Printf("Service %q stopped (PID %d)\n", name, targetPID)
+		if clrErr := a.registry.ClearServicePID(name); clrErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to clear PID for %q: %v\n", name, clrErr)
+		}
+	}
+
+	if anyFailure {
+		return firstErr
+	}
+	return nil
+}
+
+// BatchRestartCmd restarts multiple services in sequence.
+// Expands glob patterns against service names before execution.
+// Continues processing after failures (partial failure handling).
+// Returns error if any service fails to restart.
+func (a *App) BatchRestartCmd(names []string) error {
+	if len(names) == 0 {
+		return fmt.Errorf("no service names provided")
+	}
+
+	// Expand glob patterns against registry
+	services := a.registry.ListServices()
+	expandedNames := ExpandPatterns(names, services)
+
+	if len(expandedNames) == 0 {
+		return fmt.Errorf("no services found matching patterns")
+	}
+
+	var anyFailure bool
+	var firstErr error
+
+	for _, name := range expandedNames {
+		// Check if service exists (supports name:port format)
+		allServices := a.registry.ListServices()
+		svc, errs := LookupServiceWithFallback(name, allServices)
+		if svc == nil {
+			fmt.Fprintf(os.Stderr, "Error: service identifier %q not found: %s\n", name, strings.Join(errs, ", "))
+			anyFailure = true
+			if firstErr == nil {
+				firstErr = fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; "))
+			}
+			continue
+		}
+
+		// Stop if running
+		if svc.LastPID != nil && *svc.LastPID > 0 {
+			if a.processManager.IsRunning(*svc.LastPID) {
+				fmt.Printf("Stopping service %q (PID %d)...\n", name, *svc.LastPID)
+				if stopErr := a.processManager.Stop(*svc.LastPID, 5000000000); stopErr != nil {
+					if !errors.Is(stopErr, process.ErrNeedSudo) && !isProcessFinishedErr(stopErr) {
+						fmt.Fprintf(os.Stderr, "Warning: failed to stop service %q: %v\n", name, stopErr)
+					}
+				}
+			}
+		}
+
+		// Start service
+		fmt.Printf("Starting service %q...\n", name)
+		pid, err := a.processManager.Start(svc)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: failed to start service %q: %v\n", name, err)
+			anyFailure = true
+			if firstErr == nil {
+				firstErr = fmt.Errorf("failed to restart %q: %w", name, err)
+			}
+			continue
+		}
+
+		// Update registry with new PID
+		if updateErr := a.registry.UpdateServicePID(name, pid); updateErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to update registry for %q: %v\n", name, updateErr)
+		}
+
+		fmt.Printf("Service %q restarted with PID %d\n", name, pid)
+	}
+
+	if anyFailure {
+		return firstErr
+	}
 	return nil
 }
 
 // LogsCmd displays recent logs for a service
 func (a *App) LogsCmd(name string, lines int) error {
-	svc := a.registry.GetService(name)
+	// Supports name:port format for disambiguation
+	allServices := a.registry.ListServices()
+	svc, errs := LookupServiceWithFallback(name, allServices)
 	if svc == nil {
-		return fmt.Errorf("service %q not found", name)
+		return fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; "))
 	}
 
 	logLines, err := a.processManager.Tail(svc.Name, lines)
@@ -267,7 +495,7 @@ func (a *App) LogsCmd(name string, lines int) error {
 		return err
 	}
 
-	fmt.Printf("Logs for service %q:\n", name)
+	fmt.Printf("Logs for service %q:\n", svc.Name)
 	for _, line := range logLines {
 		fmt.Println(line)
 	}
@@ -281,6 +509,79 @@ func isProcessFinishedErr(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "process already finished") || strings.Contains(msg, "no such process")
+}
+
+// BatchResult represents the result of a single service operation
+type BatchResult struct {
+	Service   string
+	Action    string // "start", "stop", "restart"
+	Success   bool
+	PID       int    // For start/restart success
+	Error     string // For failures
+	Warning   string // For warnings (e.g., already running)
+}
+
+// FormatBatchResult formats a single batch operation result
+func FormatBatchResult(result BatchResult) {
+	if result.Success {
+		if result.PID > 0 {
+			// Use proper past tense for irregular verbs
+			action := result.Action + "ed"
+			if result.Action == "stop" {
+				action = "stopped"
+			}
+			fmt.Printf("%s: %s (PID %d)\n", result.Service, action, result.PID)
+		} else {
+			action := result.Action + "ed"
+			if result.Action == "stop" {
+				action = "stopped"
+			}
+			fmt.Printf("%s: %s\n", result.Service, action)
+		}
+	} else if result.Warning != "" {
+		fmt.Printf("%s: Warning - %s\n", result.Service, result.Warning)
+	} else {
+		fmt.Printf("%s: Error - %s\n", result.Service, result.Error)
+	}
+}
+
+// FormatBatchResults formats multiple batch results with summary
+func FormatBatchResults(results []BatchResult) {
+	successCount := 0
+	failureCount := 0
+
+	for _, result := range results {
+		FormatBatchResult(result)
+		if result.Success {
+			successCount++
+		} else if result.Warning == "" {
+			failureCount++
+		}
+	}
+
+	// Print summary
+	fmt.Println()
+	if failureCount == 0 && successCount > 0 {
+		action := "started"
+		if len(results) > 0 && results[0].Action != "" {
+			action = results[0].Action + "ed"
+			if results[0].Action == "stop" {
+				action = "stopped"
+			}
+		}
+		fmt.Printf("All services %s successfully\n", action)
+	} else if failureCount > 0 && successCount > 0 {
+		fmt.Printf("%d of %d services failed\n", failureCount, len(results))
+	} else if failureCount > 0 {
+		fmt.Printf("All %d services failed\n", failureCount)
+	}
+}
+
+// FormatBatchResultsWithPattern formats multiple batch results with pattern match count
+func FormatBatchResultsWithPattern(results []BatchResult, pattern string) {
+	fmt.Printf("Pattern '%s' matched %d services\n", pattern, len(results))
+	fmt.Println()
+	FormatBatchResults(results)
 }
 
 // StatusCmd shows detailed info for a specific server

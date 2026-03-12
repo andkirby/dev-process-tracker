@@ -92,36 +92,40 @@ func handleAdd(app *cli.App, args []string) error {
 
 func handleStart(app *cli.App, args []string) error {
 	if len(args) < 1 {
-		fmt.Println("Usage: devpt start <name>")
+		fmt.Println("Usage: devpt start <name> [name...]")
 		return fmt.Errorf("service name required")
 	}
 
-	return app.StartCmd(args[0])
+	return app.BatchStartCmd(args)
 }
 
 func handleStop(app *cli.App, args []string) error {
 	if len(args) < 1 {
-		fmt.Println("Usage: devpt stop <name|--port PORT>")
+		fmt.Println("Usage: devpt stop <name|--port PORT> [name...]")
 		return fmt.Errorf("service name or port required")
 	}
 
+	// Check if --port flag is used (not supported with batch mode yet)
 	if args[0] == "--port" {
+		if len(args) > 2 {
+			return fmt.Errorf("--port flag only supports single service")
+		}
 		if len(args) < 2 {
 			return fmt.Errorf("port required after --port")
 		}
 		return app.StopCmd(args[1])
 	}
 
-	return app.StopCmd(args[0])
+	return app.BatchStopCmd(args)
 }
 
 func handleRestart(app *cli.App, args []string) error {
 	if len(args) < 1 {
-		fmt.Println("Usage: devpt restart <name>")
+		fmt.Println("Usage: devpt restart <name> [name...]")
 		return fmt.Errorf("service name required")
 	}
 
-	return app.RestartCmd(args[0])
+	return app.BatchRestartCmd(args)
 }
 
 func handleLogs(app *cli.App, args []string) error {
@@ -162,11 +166,20 @@ Default:
 
 Manage services:
   devpt add <name> <cwd> "<cmd>" [ports...]
-  devpt start <name>
-  devpt stop <name>
-  devpt stop --port <port>
-  devpt restart <name>
+  devpt start <name> [name...]
+  devpt stop <name|--port PORT> [name...]
+  devpt restart <name> [name...]
   devpt logs <name> [--lines N]
+
+Patterns (quote to prevent shell expansion):
+  '*'              Match any sequence of characters
+  'service*'       Match services starting with "service"
+  '*-api'          Match services ending with "-api"
+  '*web*'          Match services containing "web"
+
+name:port format:
+  web-api:3000     Target service "web-api" on port 3000
+  "some:thing"     Literal service name containing a colon
 
 Inspect:
   devpt ls [--details]
@@ -185,6 +198,12 @@ Quick start:
   devpt add my-app ~/projects/my-app "npm run dev" 3000
   devpt start my-app
   devpt stop my-app
+
+Batch operations:
+  devpt start api worker frontend
+  devpt stop 'web-*'         # Quote patterns to prevent shell expansion
+  devpt restart '*-api' worker
+  devpt stop web-api:3000    # Target specific port
 
 Top UI tips:
   Tab switch lists, Enter actions/start, / filter, ? help, ^A add

@@ -70,10 +70,50 @@ devpt start myapp
 
 Logs are captured to: `~/.config/devpt/logs/myapp/<timestamp>.log`
 
+### Start multiple services at once
+
+```bash
+# Start multiple specific services
+devpt start api frontend worker
+
+# Use glob patterns to match services (quote to prevent shell expansion)
+devpt start 'web-*'        # Starts all services matching 'web-*'
+devpt start '*-test'       # Starts all services ending with '-test'
+
+# Target specific service by port
+devpt start web-api:3000   # Start web-api on port 3000 only
+
+# Mix patterns and specific names
+devpt start api 'web-*' worker
+```
+
+Batch operations show per-service status and a summary:
+```
+api: started (PID 12345)
+frontend: started (PID 12346)
+worker: started (PID 12347)
+
+All services started successfully
+```
+
 ### Stop a service by name
 
 ```bash
 devpt stop myapp
+```
+
+### Stop multiple services at once
+
+```bash
+# Stop multiple specific services
+devpt stop api frontend
+
+# Use glob patterns (quote to prevent shell expansion)
+devpt stop 'web-*'        # Stops all services matching 'web-*'
+
+# Target specific service by port
+devpt stop web-api:3000   # Stop web-api on port 3000 only
+devpt stop *-test         # Stops all services ending with '-test'
 ```
 
 ### Stop a service by port
@@ -86,6 +126,17 @@ devpt stop --port 3000
 
 ```bash
 devpt restart myapp
+```
+
+### Restart multiple services at once
+
+```bash
+# Restart multiple specific services
+devpt restart api frontend worker
+
+# Use glob patterns
+devpt restart web-*       # Restarts all services matching 'web-*'
+devpt restart claude-*    # Restarts all services starting with 'claude-'
 ```
 
 ### View logs

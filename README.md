@@ -67,12 +67,40 @@ Opens the interactive monitor.
 
 ```bash
 devpt add <name> <cwd> "<cmd>" [ports...]
-devpt start <name>
-devpt stop <name>
+devpt start <name> [<name>...]          # Start one or more services
+devpt stop <name> [<name>...]           # Stop one or more services
 devpt stop --port <port>
-devpt restart <name>
+devpt restart <name> [<name>...]        # Restart one or more services
 devpt logs <name> [--lines N]
 ```
+
+### Batch operations
+
+Start, stop, or restart multiple services at once:
+
+```bash
+# Start multiple specific services
+devpt start api frontend worker
+
+# Use glob patterns to match service names
+devpt start 'web-*'        # Starts all services matching 'web-*'
+devpt stop '*-test'        # Stops all services ending with '-test'
+devpt restart 'claude-*'   # Restarts all services starting with 'claude-*'
+
+# Target specific service by name:port
+devpt start web-api:3000   # Start web-api on port 3000 only
+devpt stop "some:thing"    # Service with colon in literal name
+
+# Mix patterns and specific names
+devpt start api 'web-*' worker
+```
+
+Batch operations:
+- Process services sequentially (in order)
+- Show per-service status lines
+- Display summary with success/failure counts
+- Continue on failure (partial failure handling)
+- Return exit code 1 if any service fails
 
 ### Inspect
 

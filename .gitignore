@@ -8,6 +8,26 @@
 /.tmp-home/
 /.tmp-home*/
 
-
 # Local draft/working docs
 /docs
+/coverage.out
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+vendor/
+
+# Coverage
+*.coverprofile
+coverage.html
+
+# Test fixture binaries (no extension on macOS)
+/sandbox/servers/*/go-basic
+/sandbox/servers/*/*/node
+/sandbox/servers/*/*/server.js

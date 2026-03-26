@@ -164,6 +164,57 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		m.lastInput = time.Now()
 
+		// Command mode - handle input first (from origin/main fix)
+		if m.mode == viewModeCommand {
+			switch msg.String() {
+			case "esc":
+				m.mode = viewModeTable
+				m.cmdInput = ""
+				return m, nil
+			case "enter":
+				m.cmdStatus = m.runCommand(strings.TrimSpace(m.cmdInput))
+				m.cmdInput = ""
+				m.mode = viewModeTable
+				m.refresh()
+				return m, nil
+			case "backspace":
+				if len(m.cmdInput) > 0 {
+					m.cmdInput = m.cmdInput[:len(m.cmdInput)-1]
+				}
+				return m, nil
+			}
+			for _, r := range msg.Runes {
+				if r >= 32 && r != 127 {
+					m.cmdInput += string(r)
+				}
+			}
+			return m, nil
+		}
+
+		// Search mode - handle input first (from origin/main fix)
+		if m.mode == viewModeSearch {
+			switch msg.String() {
+			case "esc":
+				m.mode = viewModeTable
+				m.searchQuery = ""
+				return m, nil
+			case "enter":
+				m.mode = viewModeTable
+				return m, nil
+			case "backspace":
+				if len(m.searchQuery) > 0 {
+					m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+				}
+				return m, nil
+			}
+			for _, r := range msg.Runes {
+				if r >= 32 && r != 127 {
+					m.searchQuery += string(r)
+				}
+			}
+			return m, nil
+		}
+
 		// In logs mode, let viewport handle scrolling keys first (BR-1.6)
 		// Only intercept keys we explicitly handle (q, esc, b, f, n, N)
 		if m.mode == viewModeLogs {
@@ -330,13 +381,6 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logPID = 0
 				// Invalidate table content hash to force viewport refresh when returning to table mode
 				m.tableContentHash = ""
-			case viewModeCommand:
-				m.mode = viewModeTable
-				m.cmdInput = ""
-			case viewModeSearch:
-				m.mode = viewModeTable
-				m.searchQuery = ""
-				m.confirm = nil
 			case viewModeHelp, viewModeConfirm:
 				m.mode = viewModeTable
 				m.confirm = nil
@@ -353,24 +397,8 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tableContentHash = ""
 				return m, nil
 			}
-			if m.mode == viewModeCommand {
-				trimmed := strings.TrimSpace(m.cmdInput)
-				if trimmed == "" || trimmed == "add" {
-					m.mode = viewModeTable
-					m.cmdInput = ""
-				}
-				return m, nil
-			}
 			return m, nil
 		case "backspace":
-			if m.mode == viewModeCommand && len(m.cmdInput) > 0 {
-				m.cmdInput = m.cmdInput[:len(m.cmdInput)-1]
-				return m, nil
-			}
-			if m.mode == viewModeSearch && len(m.searchQuery) > 0 {
-				m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
-				return m, nil
-			}
 			return m, nil
 		case "up", "k":
 			if m.mode == viewModeTable {
@@ -437,34 +465,11 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case viewModeConfirm:
 				cmd := m.executeConfirm(true)
 				return m, cmd
-			case viewModeSearch:
-				m.mode = viewModeTable
-				return m, nil
-			case viewModeCommand:
-				m.cmdStatus = m.runCommand(strings.TrimSpace(m.cmdInput))
-				m.cmdInput = ""
-				m.mode = viewModeTable
-				m.refresh()
-				return m, nil
 			case viewModeTable:
 				return m.handleEnterKey()
 			}
 			return m, nil
 		default:
-			if m.mode == viewModeCommand && len(msg.Runes) == 1 {
-				r := msg.Runes[0]
-				if r >= 32 && r != 127 {
-					m.cmdInput += string(r)
-				}
-				return m, nil
-			}
-			if m.mode == viewModeSearch && len(msg.Runes) == 1 {
-				r := msg.Runes[0]
-				if r >= 32 && r != 127 {
-					m.searchQuery += string(r)
-				}
-				return m, nil
-			}
 			return m, nil
 		}
 	case tea.MouseMsg:
@@ -664,7 +669,7 @@ func (m *topModel) View() string {
 			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fitLine(hint, width)))
 			b.WriteString("\n")
 		}
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fitLine("Esc or b to go back", width)))
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fitLine("Esc to go back", width)))
 		b.WriteString("\n")
 	}
 	if m.mode == viewModeSearch {

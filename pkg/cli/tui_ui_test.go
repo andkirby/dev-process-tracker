@@ -95,7 +95,7 @@ func TestView_CommandMode(t *testing.T) {
 
 	t.Run("command mode shows hint", func(t *testing.T) {
 		output := model.View()
-		assert.Contains(t, output, "Esc or b to go back", "Should show back hint")
+		assert.Contains(t, output, "Esc to go back", "Should show back hint")
 	})
 
 	t.Run("command mode shows example", func(t *testing.T) {

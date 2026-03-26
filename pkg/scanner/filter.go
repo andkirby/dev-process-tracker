@@ -67,6 +67,7 @@ func IsDevProcess(record *models.ProcessRecord, commandInfo string) bool {
 		"pytest",
 		"jest",
 		"vitest",
+		"cloudflared", // Cloudflare tunnel for dev exposure
 	}
 
 	for _, pattern := range devPatterns {

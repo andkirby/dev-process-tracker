@@ -176,6 +176,8 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logErr = nil
 				m.logSvc = nil
 				m.logPID = 0
+				// Invalidate table content hash to force viewport refresh when returning to table mode
+				m.tableContentHash = ""
 				return m, nil
 			case "f":
 				m.followLogs = !m.followLogs
@@ -205,6 +207,8 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case "b", "esc":
 				m.mode = viewModeTable
+				// Invalidate table content hash to force viewport refresh when returning to table mode
+				m.tableContentHash = ""
 				return m, nil
 			default:
 				// Pass all keys to viewport
@@ -324,6 +328,8 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logErr = nil
 				m.logSvc = nil
 				m.logPID = 0
+				// Invalidate table content hash to force viewport refresh when returning to table mode
+				m.tableContentHash = ""
 			case viewModeCommand:
 				m.mode = viewModeTable
 				m.cmdInput = ""
@@ -343,6 +349,8 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.logErr = nil
 				m.logSvc = nil
 				m.logPID = 0
+				// Invalidate table content hash to force viewport refresh when returning to table mode
+				m.tableContentHash = ""
 				return m, nil
 			}
 			if m.mode == viewModeCommand {

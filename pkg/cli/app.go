@@ -26,6 +26,8 @@ type App struct {
 	detector       *scanner.AgentDetector
 	processManager *process.Manager
 	healthChecker  *health.Checker
+	stdout         io.Writer
+	stderr         io.Writer
 }
 
 // NewApp creates and initializes the application
@@ -55,7 +57,33 @@ func NewApp() (*App, error) {
 		detector:       scanner.NewAgentDetector(),
 		processManager: process.NewManager(config.LogsDir),
 		healthChecker:  health.NewChecker(0),
+		stdout:         os.Stdout,
+		stderr:         os.Stderr,
 	}, nil
+}
+
+func (a *App) outWriter() io.Writer {
+	if a != nil && a.stdout != nil {
+		return a.stdout
+	}
+	return io.Discard
+}
+
+func (a *App) errWriter() io.Writer {
+	if a != nil && a.stderr != nil {
+		return a.stderr
+	}
+	return io.Discard
+}
+
+func (a *App) withOutput(stdout, stderr io.Writer) *App {
+	if a == nil {
+		return nil
+	}
+	clone := *a
+	clone.stdout = stdout
+	clone.stderr = stderr
+	return &clone
 }
 
 // discoverServers combines scanning and detection into complete server info

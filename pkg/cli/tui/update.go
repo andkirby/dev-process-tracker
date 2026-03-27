@@ -112,12 +112,14 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			if m.focus == focusRunning {
 				m.focus = focusManaged
+				m.tableFollowSelection = true
 				managed := m.managedServices()
 				if m.managedSel < 0 && len(managed) > 0 {
 					m.managedSel = 0
 				}
 			} else {
 				m.focus = focusRunning
+				m.tableFollowSelection = true
 				visible := m.visibleServers()
 				if m.selected < 0 && len(visible) > 0 {
 					m.selected = 0
@@ -196,20 +198,24 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.focus == focusRunning && m.selected > 0 {
 				m.selected--
+				m.tableFollowSelection = true
 			}
 			if m.focus == focusManaged && m.managedSel > 0 {
 				m.managedSel--
+				m.tableFollowSelection = true
 			}
 			return m, nil
 		case "down", "j":
 			if m.focus == focusRunning {
 				if m.selected < len(m.visibleServers())-1 {
 					m.selected++
+					m.tableFollowSelection = true
 				}
 			}
 			if m.focus == focusManaged {
 				if m.managedSel < len(m.managedServices())-1 {
 					m.managedSel++
+					m.tableFollowSelection = true
 				}
 			}
 			return m, nil
@@ -235,6 +241,7 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "pgup", "pgdown", "home", "end":
 			var cmd tea.Cmd
+			m.tableFollowSelection = false
 			m.table.vp, cmd = m.table.updateViewport(msg)
 			return m, cmd
 		case "enter":
@@ -256,6 +263,7 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleTableMouseClick(msg)
 			}
 			var cmd tea.Cmd
+			m.tableFollowSelection = false
 			m.table.vp, cmd = m.table.updateViewport(msg)
 			return m, cmd
 		}

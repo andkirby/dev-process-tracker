@@ -99,6 +99,7 @@ type topModel struct {
 
 	lastClickTime time.Time
 	lastClickY    int
+	tableFollowSelection bool
 }
 
 type tickMsg time.Time
@@ -135,6 +136,7 @@ func newTopModel(app AppDeps) *topModel {
 		sortBy:        sortRecent,
 		starting:      make(map[string]time.Time),
 		removed:       make(map[string]*models.ManagedService),
+		tableFollowSelection: true,
 	}
 	if servers, err := app.DiscoverServers(); err == nil {
 		m.servers = servers

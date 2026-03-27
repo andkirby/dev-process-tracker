@@ -356,18 +356,82 @@ func TestTableMouseClickSelection(t *testing.T) {
 		assert.Equal(t, 5, m.selected)
 	})
 
+	t.Run("click on managed service row selects it and activates managed focus", func(t *testing.T) {
+		model := newTestModel()
+		model.mode = viewModeTable
+		model.width = 100
+		model.height = 20
+		model.focus = focusRunning
+		model.selected = 0
+		model.managedSel = 0
+		model.app = &fakeAppDeps{
+			servers: []*models.ServerInfo{
+				{
+					ProcessRecord: &models.ProcessRecord{PID: 1001, Port: 3000, Command: "node server.js", CWD: "/tmp/app", ProjectRoot: "/tmp/app"},
+					Status:        "running",
+				},
+			},
+			services: []*models.ManagedService{
+				{Name: "alpha", CWD: "/tmp/alpha", Command: "npm run dev", Ports: []int{4100}},
+				{Name: "beta", CWD: "/tmp/beta", Command: "npm run dev", Ports: []int{4200}},
+				{Name: "gamma", CWD: "/tmp/gamma", Command: "npm run dev", Ports: []int{4300}},
+			},
+		}
+		model.servers = []*models.ServerInfo{
+			{
+				ProcessRecord: &models.ProcessRecord{PID: 1001, Port: 3000, Command: "node server.js", CWD: "/tmp/app", ProjectRoot: "/tmp/app"},
+				Status:        "running",
+			},
+		}
+
+		_ = model.View()
+		viewportLines := strings.Split(model.table.vp.View(), "\n")
+		clickY := -1
+		for i, line := range viewportLines {
+			if strings.Contains(line, "beta [stopped]") {
+				clickY = i + 2
+				break
+			}
+		}
+		assert.NotEqual(t, -1, clickY)
+
+		newModel, cmd := model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 10, Y: clickY})
+		assert.Nil(t, cmd)
+
+		m := newModel.(*topModel)
+		assert.Equal(t, focusManaged, m.focus)
+		assert.Equal(t, 1, m.managedSel)
+	})
+
 	t.Run("wheel events are passed to viewport for scrolling", func(t *testing.T) {
 		model := newTestModel()
 		model.mode = viewModeTable
-		model.servers = []*models.ServerInfo{
-			{ProcessRecord: &models.ProcessRecord{PID: 1001, Port: 3000, Command: "node server.js"}},
+		model.width = 80
+		model.height = 12
+		model.selected = 0
+		model.focus = focusRunning
+		model.servers = make([]*models.ServerInfo, 30)
+		for i := 0; i < 30; i++ {
+			model.servers[i] = &models.ServerInfo{
+				ProcessRecord: &models.ProcessRecord{
+					PID:     1001 + i,
+					Port:    3000 + i,
+					Command: fmt.Sprintf("node server-%d.js", i),
+				},
+			}
 		}
 
-		model.viewport = viewport.New()
 		_ = model.View()
+		initialOffset := model.table.vp.YOffset()
 
 		newModel, cmd := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, X: 10, Y: 5})
 		assert.NotNil(t, newModel)
-		_ = cmd
+		assert.Nil(t, cmd)
+
+		updatedModel := newModel.(*topModel)
+		assert.False(t, updatedModel.tableFollowSelection)
+
+		_ = updatedModel.View()
+		assert.Greater(t, updatedModel.table.vp.YOffset(), initialOffset)
 	})
 }

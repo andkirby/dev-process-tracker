@@ -414,6 +414,34 @@ func TestView_StatusMessage(t *testing.T) {
 	})
 }
 
+func TestView_StatusAndFooterClampToWidth(t *testing.T) {
+	model := newTestModel()
+	model.width = 40
+	model.height = 20
+	model.mode = viewModeTable
+	model.cmdStatus = `Restarted "mdt-be" because the previous health check timed out on localhost:3001`
+
+	output := model.View().Content
+	lines := strings.Split(output, "\n")
+	var statusLine, footerLine string
+
+	for _, line := range lines {
+		if strings.Contains(line, `Restarted "mdt-be"`) {
+			statusLine = line
+		}
+		if strings.Contains(line, "Services: 1 | Tab switch") {
+			footerLine = line
+		}
+	}
+
+	assert.NotEmpty(t, statusLine)
+	assert.NotEmpty(t, footerLine)
+	assert.LessOrEqual(t, calculateVisibleWidth(statusLine), model.width)
+	assert.LessOrEqual(t, calculateVisibleWidth(footerLine), model.width)
+	assert.Contains(t, statusLine, `Restarted "mdt-be" because the previo`)
+	assert.NotContains(t, statusLine, "localhost:3001")
+}
+
 func TestView_SortModeDisplay(t *testing.T) {
 	model := newTestModel()
 	model.width = 100

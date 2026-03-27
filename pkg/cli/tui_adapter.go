@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"time"
 
 	tuipkg "github.com/devports/devpt/pkg/cli/tui"
@@ -12,7 +13,7 @@ type tuiAdapter struct {
 }
 
 func NewTUIAdapter(app *App) tuipkg.AppDeps {
-	return tuiAdapter{app: app}
+	return tuiAdapter{app: app.withOutput(io.Discard, io.Discard)}
 }
 
 func (a tuiAdapter) DiscoverServers() ([]*models.ServerInfo, error) {

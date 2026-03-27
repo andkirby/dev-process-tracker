@@ -47,7 +47,9 @@ func (t *processTable) Render(m *topModel, width int) string {
 	t.vp.SetWidth(width)
 	t.vp.SetHeight(t.heightFor(m.height, m.hasStatusLine()))
 	t.vp.SetContent(vpContent)
-	t.scrollToSelection(m)
+	if m.tableFollowSelection {
+		t.scrollToSelection(m)
+	}
 
 	return t.vp.View()
 }

@@ -40,12 +40,16 @@ func (m *topModel) View() tea.View {
 	switch m.mode {
 	case viewModeHelp:
 		b.WriteString(m.renderHelp(width))
+		b.WriteString("\n")
 	case viewModeLogs:
 		b.WriteString(m.renderLogs(width))
+		b.WriteString("\n")
 	case viewModeLogsDebug:
 		b.WriteString(m.renderLogsDebug(width))
+		b.WriteString("\n")
 	case viewModeTable:
 		b.WriteString(m.table.Render(m, width))
+		b.WriteString("\n")
 	}
 
 	if m.mode == viewModeCommand {

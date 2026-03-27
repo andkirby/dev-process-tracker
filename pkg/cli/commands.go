@@ -25,7 +25,7 @@ func (a *App) ListCmd(detailed bool) error {
 
 // printServerTable prints servers in tabular format
 func (a *App) printServerTable(servers []*models.ServerInfo, detailed bool) error {
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(a.outWriter(), 0, 0, 2, ' ', 0)
 
 	if detailed {
 		fmt.Fprintln(w, "Name\tPort\tPID\tProject\tCommand\tSource\tStatus")
@@ -100,7 +100,7 @@ func (a *App) AddCmd(name, cwd, command string, ports []int) error {
 		return err
 	}
 
-	fmt.Printf("Service %q registered successfully\n", name)
+	fmt.Fprintf(a.outWriter(), "Service %q registered successfully\n", name)
 	return nil
 }
 
@@ -118,7 +118,7 @@ func (a *App) StartCmd(name string) error {
 		return fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; "))
 	}
 
-	fmt.Printf("Starting %q...\n", svc.Name)
+	fmt.Fprintf(a.outWriter(), "Starting %q...\n", svc.Name)
 	pid, err := a.processManager.Start(svc)
 	if err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
@@ -126,10 +126,10 @@ func (a *App) StartCmd(name string) error {
 
 	// Update registry with new PID
 	if err := a.registry.UpdateServicePID(svc.Name, pid); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update registry: %v\n", err)
+		fmt.Fprintf(a.errWriter(), "Warning: failed to update registry: %v\n", err)
 	}
 
-	fmt.Printf("Started %q\n", svc.Name)
+	fmt.Fprintf(a.outWriter(), "Started %q\n", svc.Name)
 	return nil
 }
 
@@ -201,7 +201,7 @@ func (a *App) StopCmd(identifier string) error {
 	}
 
 	// Stop the process
-	fmt.Printf("Stopping PID %d...\n", targetPID)
+	fmt.Fprintf(a.outWriter(), "Stopping PID %d...\n", targetPID)
 	if err := a.processManager.Stop(targetPID, 5000000000); err != nil { // 5 second timeout
 		if errors.Is(err, process.ErrNeedSudo) {
 			return fmt.Errorf("requires sudo to terminate PID %d", targetPID)
@@ -209,7 +209,7 @@ func (a *App) StopCmd(identifier string) error {
 		if isProcessFinishedErr(err) {
 			if targetServiceName != "" {
 				if clrErr := a.registry.ClearServicePID(targetServiceName); clrErr != nil {
-					fmt.Fprintf(os.Stderr, "Warning: failed to clear PID for %q: %v\n", targetServiceName, clrErr)
+					fmt.Fprintf(a.errWriter(), "Warning: failed to clear PID for %q: %v\n", targetServiceName, clrErr)
 				}
 			}
 			return nil
@@ -217,10 +217,10 @@ func (a *App) StopCmd(identifier string) error {
 		return fmt.Errorf("failed to stop process: %w", err)
 	}
 
-	fmt.Printf("Process %d stopped\n", targetPID)
+	fmt.Fprintf(a.outWriter(), "Process %d stopped\n", targetPID)
 	if targetServiceName != "" {
 		if err := a.registry.ClearServicePID(targetServiceName); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to clear PID for %q: %v\n", targetServiceName, err)
+			fmt.Fprintf(a.errWriter(), "Warning: failed to clear PID for %q: %v\n", targetServiceName, err)
 		}
 	}
 	return nil
@@ -237,14 +237,14 @@ func (a *App) RestartCmd(name string) error {
 
 	// Stop if running
 	if svc.LastPID != nil && *svc.LastPID > 0 {
-		fmt.Printf("Stopping service %q...\n", svc.Name)
+		fmt.Fprintf(a.outWriter(), "Stopping service %q...\n", svc.Name)
 		if err := a.processManager.Stop(*svc.LastPID, 5000000000); err != nil { // 5 second timeout
-			fmt.Fprintf(os.Stderr, "Warning: failed to stop service: %v\n", err)
+			fmt.Fprintf(a.errWriter(), "Warning: failed to stop service: %v\n", err)
 		}
 	}
 
 	// Start
-	fmt.Printf("Starting %q...\n", svc.Name)
+	fmt.Fprintf(a.outWriter(), "Starting %q...\n", svc.Name)
 	pid, err := a.processManager.Start(svc)
 	if err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
@@ -252,10 +252,10 @@ func (a *App) RestartCmd(name string) error {
 
 	// Update registry
 	if err := a.registry.UpdateServicePID(svc.Name, pid); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update registry: %v\n", err)
+		fmt.Fprintf(a.errWriter(), "Warning: failed to update registry: %v\n", err)
 	}
 
-	fmt.Printf("Restarted %q\n", svc.Name)
+	fmt.Fprintf(a.outWriter(), "Restarted %q\n", svc.Name)
 	return nil
 }
 
@@ -513,12 +513,12 @@ func isProcessFinishedErr(err error) bool {
 
 // BatchResult represents the result of a single service operation
 type BatchResult struct {
-	Service   string
-	Action    string // "start", "stop", "restart"
-	Success   bool
-	PID       int    // For start/restart success
-	Error     string // For failures
-	Warning   string // For warnings (e.g., already running)
+	Service string
+	Action  string // "start", "stop", "restart"
+	Success bool
+	PID     int    // For start/restart success
+	Error   string // For failures
+	Warning string // For warnings (e.g., already running)
 }
 
 // FormatBatchResult formats a single batch operation result

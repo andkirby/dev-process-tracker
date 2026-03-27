@@ -125,7 +125,10 @@ func fitLine(line string, width int) string {
 	}
 	lineWidth := runewidth.StringWidth(line)
 	if lineWidth >= width {
-		return line
+		if width <= 3 {
+			return runewidth.Truncate(line, width, "")
+		}
+		return runewidth.Truncate(line, width, "...")
 	}
 	return line + strings.Repeat(" ", width-lineWidth)
 }
@@ -330,8 +333,7 @@ func (m *topModel) handleTableMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 
 	runningDataStart := 2
 	runningDataEnd := runningDataStart + len(visible) - 1
-	blankLinesEnd := runningDataEnd + 1
-	managedHeaderLine := blankLinesEnd + 1
+	managedHeaderLine := runningDataEnd + 1
 	managedDataStart := managedHeaderLine + 1
 
 	const doubleClickThreshold = 500 * time.Millisecond
@@ -347,10 +349,13 @@ func (m *topModel) handleTableMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 		if newSelected >= 0 && newSelected < len(visible) {
 			if isDoubleClick && m.selected == newSelected {
 				m.focus = focusRunning
+				m.tableFollowSelection = true
 				m.lastInput = time.Now()
 				return m.handleEnterKey()
 			}
+			m.focus = focusRunning
 			m.selected = newSelected
+			m.tableFollowSelection = true
 			m.lastInput = time.Now()
 		}
 		return m, nil
@@ -361,10 +366,13 @@ func (m *topModel) handleTableMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 		if newManagedSel >= 0 && newManagedSel < len(managed) {
 			if isDoubleClick && m.managedSel == newManagedSel {
 				m.focus = focusManaged
+				m.tableFollowSelection = true
 				m.lastInput = time.Now()
 				return m.handleEnterKey()
 			}
+			m.focus = focusManaged
 			m.managedSel = newManagedSel
+			m.tableFollowSelection = true
 			m.lastInput = time.Now()
 		}
 	}

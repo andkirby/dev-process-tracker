@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -18,28 +19,19 @@ type processTable struct {
 	runningVP viewport.Model
 	managedVP viewport.Model
 
-	aboveLines int
-	belowLines int
-
 	lastRunningHeight int
 	lastManagedHeight int
 }
 
 func newProcessTable() processTable {
 	return processTable{
-		runningVP:  viewport.New(),
-		managedVP:  viewport.New(),
-		aboveLines: 2,
-		belowLines: 1,
+		runningVP: viewport.New(),
+		managedVP: viewport.New(),
 	}
 }
 
-func (t *processTable) heightFor(termHeight int, hasStatus bool) int {
-	below := t.belowLines
-	if hasStatus {
-		below++
-	}
-	h := termHeight - t.aboveLines - below
+func (t *processTable) heightFor(termHeight, aboveLines, belowLines int) int {
+	h := termHeight - aboveLines - belowLines
 	if h < 3 {
 		h = 3
 	}
@@ -47,12 +39,15 @@ func (t *processTable) heightFor(termHeight int, hasStatus bool) int {
 }
 
 func (t *processTable) Render(m *topModel, width int) string {
-	totalHeight := t.heightFor(m.height, m.hasStatusLine())
+	topLines := m.tableTopLines(width)
+	bottomLines := m.tableBottomLines(width)
+	totalHeight := t.heightFor(m.height, topLines, bottomLines)
 	runningContent := m.renderRunningTable(width)
 	managedHeader := m.renderManagedHeader(width)
 	managedContent := m.renderManagedSection(width)
 	runningLines := 1 + strings.Count(runningContent, "\n")
-	runningHeight, managedHeight := t.sectionHeights(totalHeight, runningLines)
+	managedLines := 1 + strings.Count(managedContent, "\n")
+	runningHeight, managedHeight := t.sectionHeights(totalHeight, runningLines, managedLines)
 
 	t.lastRunningHeight = runningHeight
 	t.lastManagedHeight = managedHeight
@@ -71,6 +66,22 @@ func (t *processTable) Render(m *topModel, width int) string {
 	return t.runningVP.View() + "\n" + managedHeader + "\n" + t.managedVP.View()
 }
 
+func (m *topModel) tableTopLines(width int) int {
+	lines := 1
+	if ctx := m.renderContext(width); ctx != "" {
+		lines += renderedLineCount(ctx)
+	}
+	return lines
+}
+
+func (m *topModel) tableBottomLines(width int) int {
+	lines := renderedLineCount(m.renderFooter(width))
+	if sl := m.renderStatusLine(width); sl != "" {
+		lines += renderedLineCount(sl)
+	}
+	return lines
+}
+
 func (m *topModel) hasStatusLine() bool {
 	if m.cmdStatus != "" {
 		return true
@@ -87,31 +98,7 @@ func (m *topModel) hasStatusLine() bool {
 }
 
 func (m *topModel) renderContext(width int) string {
-	baseStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	appliedFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-
-	var filter string
-	switch {
-	case m.mode == viewModeSearch:
-		inputWidth := runewidth.StringWidth(m.searchInput.Value()) + 1
-		if inputWidth < 1 {
-			inputWidth = 1
-		}
-		if inputWidth > 24 {
-			inputWidth = 24
-		}
-		m.searchInput.SetWidth(inputWidth)
-		filter = m.searchInput.View()
-	case strings.TrimSpace(m.searchQuery) != "":
-		filter = appliedFilterStyle.Render(m.searchQuery)
-	default:
-		filter = "none"
-	}
-
-	ctx := strings.Join([]string{
-		baseStyle.Render("Filter: ") + filter,
-	}, " | ")
-	return fitAnsiLine(ctx, width)
+	return ""
 }
 
 func (m *topModel) renderStatusLine(width int) string {
@@ -137,10 +124,38 @@ func (m *topModel) renderFooter(width int) string {
 	s := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
 	h := m.help
 	h.SetWidth(width)
-	return s.Render(h.View(m.keys))
+	return strings.TrimRight(s.Render(h.View(m.footerKeyMap())), "\n")
 }
 
-func (t *processTable) sectionHeights(totalHeight, runningLines int) (int, int) {
+func (m *topModel) footerKeyMap() keyMap {
+	k := m.keys
+	k.Search = key.NewBinding(
+		key.WithKeys("/"),
+		key.WithHelp("/", m.footerFilterLabel()),
+	)
+	return k
+}
+
+func (m *topModel) footerFilterLabel() string {
+	switch {
+	case m.mode == viewModeSearch:
+		inputWidth := runewidth.StringWidth(m.searchInput.Value()) + 1
+		if inputWidth < 1 {
+			inputWidth = 1
+		}
+		if inputWidth > 24 {
+			inputWidth = 24
+		}
+		m.searchInput.SetWidth(inputWidth)
+		return m.searchInput.View()
+	case strings.TrimSpace(m.searchQuery) != "":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(m.searchQuery)
+	default:
+		return "filter"
+	}
+}
+
+func (t *processTable) sectionHeights(totalHeight, runningLines, managedLines int) (int, int) {
 	if totalHeight < 3 {
 		return 1, 1
 	}
@@ -163,6 +178,9 @@ func (t *processTable) sectionHeights(totalHeight, runningLines int) (int, int) 
 	managedHeight := totalHeight - separator - runningHeight
 	if managedHeight < 1 {
 		managedHeight = 1
+	}
+	if managedLines > 0 && managedHeight > managedLines {
+		managedHeight = managedLines
 	}
 
 	return runningHeight, managedHeight

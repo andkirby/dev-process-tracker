@@ -325,7 +325,16 @@ func TestTableMouseClickSelection(t *testing.T) {
 		model.selected = 0
 		model.focus = focusRunning
 
-		mouseMsg := tea.MouseClickMsg{Button: tea.MouseLeft, X: 10, Y: 5}
+		viewportLines := strings.Split(model.table.runningVP.View(), "\n")
+		clickY := -1
+		for i, line := range viewportLines {
+			if strings.Contains(line, "3001") {
+				clickY = model.tableTopLines(model.width) + i
+				break
+			}
+		}
+		assert.NotEqual(t, -1, clickY)
+		mouseMsg := tea.MouseClickMsg{Button: tea.MouseLeft, X: 10, Y: clickY}
 		newModel, cmd := model.Update(mouseMsg)
 		assert.NotNil(t, newModel)
 		assert.Nil(t, cmd)
@@ -351,7 +360,9 @@ func TestTableMouseClickSelection(t *testing.T) {
 		_ = model.View()
 		model.table.runningVP.SetYOffset(5)
 
-		newModel, _ := model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 10, Y: 4})
+		targetAbsoluteLine := 2 + 5
+		clickY := model.tableTopLines(model.width) + (targetAbsoluteLine - model.table.runningVP.YOffset())
+		newModel, _ := model.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 10, Y: clickY})
 		m := newModel.(*topModel)
 		assert.Equal(t, 5, m.selected)
 	})
@@ -389,7 +400,7 @@ func TestTableMouseClickSelection(t *testing.T) {
 		clickY := -1
 		for i, line := range viewportLines {
 			if strings.Contains(line, "beta [stopped]") {
-				clickY = 2 + model.table.lastRunningHeight + 1 + i
+				clickY = model.tableTopLines(model.width) + model.table.lastRunningHeight + 1 + i
 				break
 			}
 		}

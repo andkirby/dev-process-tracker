@@ -323,7 +323,7 @@ func (m *topModel) handleTableMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 	managed := m.managedServices()
 	mouse := msg.Mouse()
 
-	headerOffset := 2
+	headerOffset := m.tableTopLines(m.width)
 	viewportY := mouse.Y - headerOffset
 	if viewportY < 0 {
 		return m, nil

@@ -275,7 +275,7 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleTableMouseClick(msg)
 			}
 			m.tableFollowSelection = false
-			viewportY := mouse.Y - 2
+			viewportY := mouse.Y - m.tableTopLines(m.width)
 			cmd := m.table.updateViewportForTableY(viewportY, msg)
 			return m, cmd
 		}

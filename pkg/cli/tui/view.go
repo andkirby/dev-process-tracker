@@ -39,8 +39,10 @@ func (m *topModel) baseViewContent(width int) string {
 	switch m.mode {
 	case viewModeLogs:
 		b.WriteString(headerStyle.Render(m.logsHeaderView()))
+		b.WriteString("\n")
 	case viewModeLogsDebug:
 		b.WriteString(headerStyle.Render("Viewport Debug Mode (b back, q quit)"))
+		b.WriteString("\n")
 	default:
 		b.WriteString(headerStyle.Render("Dev Process Tracker - Health Monitor (q quit, D for debug)"))
 	}
@@ -117,9 +119,8 @@ func (m *topModel) baseViewContent(width int) string {
 }
 
 func (m *topModel) renderLogs(width int) string {
-	headerText := m.logsHeaderView()
-	headerLines := 1 + strings.Count(headerText, "\n")
-	footerLines := 3
+	headerLines := renderedLineCount(m.logsHeaderView())
+	footerLines := renderedLineCount(m.logsFooterView())
 	availableHeight := m.height - headerLines - footerLines
 	if availableHeight < 5 {
 		availableHeight = 5
@@ -147,18 +148,68 @@ func (m *topModel) initDebugViewport() {
 }
 
 func (m *topModel) renderLogsDebug(width int) string {
-	headerHeight := 4
+	headerHeight := renderedLineCount("Viewport Debug Mode (b back, q quit)")
+	footerHeight := renderedLineCount("b back | q quit | ↑↓ scroll | Page Up/Down")
 	m.viewport.SetWidth(width)
-	m.viewport.SetHeight(m.height - headerHeight - 4)
+	height := m.height - headerHeight - footerHeight
+	if height < 5 {
+		height = 5
+	}
+	m.viewport.SetHeight(height)
 	return m.viewport.View()
 }
 
 func (m *topModel) logsHeaderView() string {
 	name := "-"
+	port := "-"
+	pid := "-"
 	if m.logSvc != nil {
 		name = m.logSvc.Name
+		for _, srv := range m.servers {
+			if srv.ManagedService != nil && srv.ManagedService.Name == m.logSvc.Name && srv.ProcessRecord != nil {
+				if srv.ProcessRecord.Port > 0 {
+					port = fmt.Sprintf("%d", srv.ProcessRecord.Port)
+				}
+				if srv.ProcessRecord.PID > 0 {
+					pid = fmt.Sprintf("%d", srv.ProcessRecord.PID)
+				}
+				break
+			}
+		}
+		if port == "-" && len(m.logSvc.Ports) > 0 && m.logSvc.Ports[0] > 0 {
+			port = fmt.Sprintf("%d", m.logSvc.Ports[0])
+		}
 	} else if m.logPID > 0 {
-		name = fmt.Sprintf("pid:%d", m.logPID)
+		pid = fmt.Sprintf("%d", m.logPID)
+		for _, srv := range m.servers {
+			if srv.ProcessRecord != nil && srv.ProcessRecord.PID == m.logPID {
+				if srv.ProcessRecord.Port > 0 {
+					port = fmt.Sprintf("%d", srv.ProcessRecord.Port)
+				}
+				if srv.ManagedService != nil && srv.ManagedService.Name != "" {
+					name = srv.ManagedService.Name
+				}
+				break
+			}
+		}
+		if name == "-" {
+			name = fmt.Sprintf("pid:%d", m.logPID)
+		}
 	}
-	return fmt.Sprintf("Logs: %s (b back, f follow:%t)", name, m.followLogs)
+	return fmt.Sprintf("Logs: %s | Port: %s | PID: %s", name, port, pid)
+}
+
+func (m *topModel) logsFooterView() string {
+	if len(m.highlightMatches) > 0 {
+		matchCounter := fmt.Sprintf("Match %d/%d", m.highlightIndex+1, len(m.highlightMatches))
+		return fmt.Sprintf("%s | b back | f follow:%t | n/N next/prev highlight", matchCounter, m.followLogs)
+	}
+	return fmt.Sprintf("b back | f follow:%t | ↑↓ scroll | Page Up/Down", m.followLogs)
+}
+
+func renderedLineCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	return 1 + strings.Count(s, "\n")
 }

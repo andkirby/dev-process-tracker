@@ -209,15 +209,15 @@ func TestView_LogsMode(t *testing.T) {
 	t.Run("logs header shows service name", func(t *testing.T) {
 		output := model.View().Content
 		assert.Contains(t, output, "Logs:")
-		assert.Contains(t, output, "pid:1234")
+		assert.Contains(t, output, "PID: 1234")
 	})
 
-	t.Run("logs header shows follow status", func(t *testing.T) {
+	t.Run("logs header shows port field", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "follow:")
+		assert.Contains(t, output, "Port:")
 	})
 
-	t.Run("logs header shows back hint", func(t *testing.T) {
+	t.Run("logs footer shows back hint", func(t *testing.T) {
 		output := model.View().Content
 		assert.Contains(t, output, "b back")
 	})

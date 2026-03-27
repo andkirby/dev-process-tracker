@@ -4,8 +4,10 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/devports/devpt/pkg/health"
 	"github.com/devports/devpt/pkg/models"
@@ -85,6 +87,7 @@ type topModel struct {
 	cmdInput    string
 	searchQuery string
 	cmdStatus   string
+	searchInput textinput.Model
 
 	health           map[int]string
 	healthDetails    map[int]*health.HealthCheck
@@ -135,6 +138,18 @@ func Run(app AppDeps) error {
 }
 
 func newTopModel(app AppDeps) *topModel {
+	searchInput := textinput.New()
+	searchInput.Prompt = ">"
+	searchInput.Placeholder = ""
+	searchInput.CharLimit = 256
+	searchInput.SetVirtualCursor(true)
+	searchStyles := textinput.DefaultStyles(false)
+	searchStyles.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+	searchStyles.Focused.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
+	searchStyles.Blurred.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	searchStyles.Blurred.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	searchInput.SetStyles(searchStyles)
+
 	m := &topModel{
 		app:                  app,
 		lastUpdate:           time.Now(),
@@ -150,6 +165,7 @@ func newTopModel(app AppDeps) *topModel {
 		removed:              make(map[string]*models.ManagedService),
 		keys:                 defaultKeyMap(),
 		help:                 help.New(),
+		searchInput:          searchInput,
 		tableFollowSelection: true,
 	}
 	if servers, err := app.DiscoverServers(); err == nil {

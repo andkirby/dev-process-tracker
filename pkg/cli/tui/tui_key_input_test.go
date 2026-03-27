@@ -25,13 +25,18 @@ func TestCommandModeAcceptsRuneKeys(t *testing.T) {
 func TestSearchModeAcceptsRuneKeys(t *testing.T) {
 	t.Parallel()
 
-	m := &topModel{mode: viewModeSearch}
-	next, _ := m.Update(tea.KeyPressMsg{Text: "s", Code: 's'})
+	m := newTopModel(&fakeAppDeps{})
+	next, _ := m.Update(tea.KeyPressMsg{Text: "/", Code: '/'})
 	updated, ok := next.(*topModel)
 	if !ok {
 		t.Fatalf("expected *topModel, got %T", next)
 	}
-	if updated.searchQuery != "s" {
-		t.Fatalf("expected search query to include rune key, got %q", updated.searchQuery)
+	next, _ = updated.Update(tea.KeyPressMsg{Text: "s", Code: 's'})
+	updated, ok = next.(*topModel)
+	if !ok {
+		t.Fatalf("expected *topModel, got %T", next)
+	}
+	if updated.searchInput.Value() != "s" {
+		t.Fatalf("expected search input to include rune key, got %q", updated.searchInput.Value())
 	}
 }

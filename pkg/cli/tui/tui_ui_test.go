@@ -278,17 +278,23 @@ func TestView_SearchMode(t *testing.T) {
 	model.width = 100
 	model.mode = viewModeSearch
 	model.searchQuery = "node"
+	model.searchInput.SetValue("node")
+	model.searchInput.Focus()
 
 	t.Run("search prompt shows query", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Filter: [node]")
+		assert.Contains(t, output, "Filter:")
+		assert.Contains(t, output, "node")
+		assert.Contains(t, output, ">")
 		assert.Contains(t, output, "Name")
 	})
 
 	t.Run("empty search shows inline input", func(t *testing.T) {
 		model.searchQuery = ""
+		model.searchInput.SetValue("")
 		output := model.View().Content
-		assert.Contains(t, output, "Filter: []")
+		assert.Contains(t, output, "Filter:")
+		assert.Contains(t, output, ">")
 	})
 }
 
@@ -447,9 +453,12 @@ func TestView_ModeTransitions(t *testing.T) {
 
 	t.Run("search mode renders", func(t *testing.T) {
 		model.mode = viewModeSearch
+		model.searchInput.SetValue("")
+		model.searchInput.Focus()
 		output := model.View().Content
 		assert.NotEmpty(t, output)
-		assert.Contains(t, output, "Filter: [")
+		assert.Contains(t, output, "Filter:")
+		assert.Contains(t, output, ">")
 		assert.Contains(t, output, "Name")
 	})
 

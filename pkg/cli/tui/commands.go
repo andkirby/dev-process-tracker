@@ -17,9 +17,16 @@ import (
 
 func (m topModel) countVisible() int { return len(m.visibleServers()) }
 
+func (m topModel) currentFilterQuery() string {
+	if m.mode == viewModeSearch {
+		return m.searchInput.Value()
+	}
+	return m.searchQuery
+}
+
 func (m topModel) visibleServers() []*models.ServerInfo {
 	var visible []*models.ServerInfo
-	q := strings.ToLower(strings.TrimSpace(m.searchQuery))
+	q := strings.ToLower(strings.TrimSpace(m.currentFilterQuery()))
 	for _, srv := range m.servers {
 		if srv == nil || srv.ProcessRecord == nil {
 			continue
@@ -44,7 +51,7 @@ func (m topModel) visibleServers() []*models.ServerInfo {
 
 func (m topModel) managedServices() []*models.ManagedService {
 	services := m.app.ListServices()
-	q := strings.ToLower(strings.TrimSpace(m.searchQuery))
+	q := strings.ToLower(strings.TrimSpace(m.currentFilterQuery()))
 	var filtered []*models.ManagedService
 	for _, svc := range services {
 		if q == "" || strings.Contains(strings.ToLower(svc.Name+" "+svc.CWD+" "+svc.Command), q) {

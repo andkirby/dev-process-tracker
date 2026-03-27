@@ -87,15 +87,33 @@ func (m *topModel) hasStatusLine() bool {
 }
 
 func (m *topModel) renderContext(width int) string {
-	filter := "none"
-	if m.mode == viewModeSearch {
-		filter = "[" + m.searchQuery + "]"
-	} else if strings.TrimSpace(m.searchQuery) != "" {
-		filter = m.searchQuery
+	baseStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	appliedFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+
+	var filter string
+	switch {
+	case m.mode == viewModeSearch:
+		inputWidth := runewidth.StringWidth(m.searchInput.Value()) + 1
+		if inputWidth < 1 {
+			inputWidth = 1
+		}
+		if inputWidth > 24 {
+			inputWidth = 24
+		}
+		m.searchInput.SetWidth(inputWidth)
+		filter = m.searchInput.View()
+	case strings.TrimSpace(m.searchQuery) != "":
+		filter = appliedFilterStyle.Render(m.searchQuery)
+	default:
+		filter = "none"
 	}
-	ctx := fmt.Sprintf("Services: %d | Sort: %s | Filter: %s", m.countVisible(), sortModeLabel(m.sortBy), filter)
-	s := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	return s.Render(fitLine(ctx, width))
+
+	ctx := strings.Join([]string{
+		baseStyle.Render(fmt.Sprintf("Services: %d", m.countVisible())),
+		baseStyle.Render(fmt.Sprintf("Sort: %s", sortModeLabel(m.sortBy))),
+		baseStyle.Render("Filter: ") + filter,
+	}, " | ")
+	return fitAnsiLine(ctx, width)
 }
 
 func (m *topModel) renderStatusLine(width int) string {

@@ -46,24 +46,19 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == viewModeSearch {
 			switch msg.String() {
 			case "esc":
+				m.searchInput.SetValue(m.searchQuery)
+				m.searchInput.Blur()
 				m.mode = viewModeTable
-				m.searchQuery = ""
 				return m, nil
 			case "enter":
+				m.searchQuery = m.searchInput.Value()
+				m.searchInput.Blur()
 				m.mode = viewModeTable
 				return m, nil
-			case "backspace":
-				if len(m.searchQuery) > 0 {
-					m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
-				}
-				return m, nil
 			}
-			for _, r := range []rune(msg.Text) {
-				if r >= 32 && r != 127 {
-					m.searchQuery += string(r)
-				}
-			}
-			return m, nil
+			var cmd tea.Cmd
+			m.searchInput, cmd = m.searchInput.Update(msg)
+			return m, cmd
 		}
 
 		if m.mode == viewModeLogs {
@@ -134,10 +129,13 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.openHelpModal()
 			return m, nil
 		case key.Matches(msg, m.keys.Search):
+			m.searchInput.SetValue(m.searchQuery)
+			m.searchInput.CursorEnd()
 			m.mode = viewModeSearch
-			return m, nil
+			return m, m.searchInput.Focus()
 		case key.Matches(msg, m.keys.ClearFilter):
 			m.searchQuery = ""
+			m.searchInput.SetValue("")
 			m.cmdStatus = "Filter cleared"
 			return m, nil
 		case key.Matches(msg, m.keys.Sort):

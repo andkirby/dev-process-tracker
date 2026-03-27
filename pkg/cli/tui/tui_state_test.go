@@ -36,7 +36,7 @@ func TestTUISimpleUpdate(t *testing.T) {
 	t.Run("forward slash enters search mode", func(t *testing.T) {
 		model.mode = viewModeTable
 		newModel, cmd := model.Update(tea.KeyPressMsg{Text: "/", Code: '/'})
-		assert.Nil(t, cmd)
+		assert.NotNil(t, cmd)
 		updatedModel := newModel.(*topModel)
 		assert.Equal(t, viewModeSearch, updatedModel.mode)
 	})

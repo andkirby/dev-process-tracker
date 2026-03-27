@@ -56,7 +56,7 @@ func TestView_StatusBar(t *testing.T) {
 
 	t.Run("footer shows service count", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Services:")
+		assert.Contains(t, output, "Services: 1")
 	})
 
 	t.Run("footer shows debug shortcut", func(t *testing.T) {
@@ -175,7 +175,7 @@ func TestView_ManagedServicesSection(t *testing.T) {
 
 	t.Run("context line shows focus state", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Focus:")
+		assert.Contains(t, output, "Services:")
 	})
 
 	t.Run("tab switch hint in footer", func(t *testing.T) {
@@ -191,14 +191,14 @@ func TestView_ContextLine(t *testing.T) {
 
 	t.Run("context line shows focus", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Focus:")
+		assert.Contains(t, output, "Services:")
 		assert.Contains(t, output, "Sort:")
 		assert.Contains(t, output, "Filter:")
 	})
 
-	t.Run("context line shows running focus by default", func(t *testing.T) {
+	t.Run("context line shows service count by default", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Focus: running")
+		assert.Contains(t, output, "Services: 1")
 	})
 }
 
@@ -317,7 +317,7 @@ func TestView_ManagedServiceSelection(t *testing.T) {
 
 	t.Run("managed focus shows in context", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Focus: managed")
+		assert.Contains(t, output, "Services: 1")
 	})
 
 	t.Run("tab switch hint available for focus change", func(t *testing.T) {
@@ -492,7 +492,7 @@ func TestView_StatusAndFooterClampToWidth(t *testing.T) {
 		if strings.Contains(line, `Restarted "mdt-be"`) {
 			statusLine = line
 		}
-		if strings.Contains(line, "Services: 1") {
+		if strings.Contains(line, "switch list") {
 			footerLine = line
 		}
 	}

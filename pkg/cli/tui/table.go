@@ -87,15 +87,11 @@ func (m *topModel) hasStatusLine() bool {
 }
 
 func (m *topModel) renderContext(width int) string {
-	focus := "running"
-	if m.focus == focusManaged {
-		focus = "managed"
-	}
 	filter := m.searchQuery
 	if strings.TrimSpace(filter) == "" {
 		filter = "none"
 	}
-	ctx := fmt.Sprintf("Focus: %s | Sort: %s | Filter: %s", focus, sortModeLabel(m.sortBy), filter)
+	ctx := fmt.Sprintf("Services: %d | Sort: %s | Filter: %s", m.countVisible(), sortModeLabel(m.sortBy), filter)
 	s := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	return s.Render(fitLine(ctx, width))
 }
@@ -123,7 +119,7 @@ func (m *topModel) renderFooter(width int) string {
 	s := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
 	h := m.help
 	h.SetWidth(width)
-	return s.Render(fitLine(fmt.Sprintf("Services: %d", m.countVisible()), width)) + "\n" + s.Render(h.View(m.keys))
+	return s.Render(h.View(m.keys))
 }
 
 func (t *processTable) sectionHeights(totalHeight, runningLines int) (int, int) {
@@ -287,7 +283,7 @@ func (m *topModel) renderRunningTable(width int) string {
 }
 
 func (m *topModel) renderManagedHeader(width int) string {
-	text := "Managed Services (Tab focus, Enter start) "
+	text := "Managed Services "
 	fillW := width - runewidth.StringWidth(text)
 	if fillW < 0 {
 		fillW = 0

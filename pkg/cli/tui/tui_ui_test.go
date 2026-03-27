@@ -56,7 +56,7 @@ func TestView_StatusBar(t *testing.T) {
 
 	t.Run("footer shows service count", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Services: 1")
+		assert.Contains(t, output, "Name (1)")
 	})
 
 	t.Run("footer shows debug shortcut", func(t *testing.T) {
@@ -105,8 +105,8 @@ func TestView_ConfirmDialog(t *testing.T) {
 
 	t.Run("confirm keeps table visible behind modal", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Name")
-		assert.Contains(t, output, "Managed Services")
+		assert.Contains(t, output, "Name (1)")
+		assert.Contains(t, output, "Managed Services (0)")
 		assert.Contains(t, output, "Confirm")
 	})
 
@@ -154,7 +154,7 @@ func TestView_TableStructure(t *testing.T) {
 		headerLine := findLineContaining(lines, "Name")
 
 		assert.NotEmpty(t, headerLine)
-		assert.Contains(t, headerLine, "Name")
+		assert.Contains(t, headerLine, "Name (1)")
 		assert.Contains(t, headerLine, "Port")
 		assert.Contains(t, headerLine, "PID")
 		assert.Contains(t, headerLine, "Project")
@@ -175,7 +175,7 @@ func TestView_ManagedServicesSection(t *testing.T) {
 
 	t.Run("context line shows focus state", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Services:")
+		assert.Contains(t, output, "Filter:")
 	})
 
 	t.Run("tab switch hint in footer", func(t *testing.T) {
@@ -191,14 +191,12 @@ func TestView_ContextLine(t *testing.T) {
 
 	t.Run("context line shows focus", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Services:")
-		assert.Contains(t, output, "Sort:")
 		assert.Contains(t, output, "Filter:")
 	})
 
-	t.Run("context line shows service count by default", func(t *testing.T) {
+	t.Run("context line omits service count", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Services: 1")
+		assert.NotContains(t, output, "Services: 1 |")
 	})
 }
 
@@ -253,8 +251,8 @@ func TestView_HelpMode(t *testing.T) {
 
 	t.Run("help keeps table visible behind modal", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Name")
-		assert.Contains(t, output, "Managed Services")
+		assert.Contains(t, output, "Name (1)")
+		assert.Contains(t, output, "Managed Services (0)")
 		assert.Contains(t, output, "Help")
 	})
 
@@ -286,7 +284,7 @@ func TestView_SearchMode(t *testing.T) {
 		assert.Contains(t, output, "Filter:")
 		assert.Contains(t, output, "node")
 		assert.Contains(t, output, ">")
-		assert.Contains(t, output, "Name")
+		assert.Contains(t, output, "Name (1)")
 	})
 
 	t.Run("empty search shows inline input", func(t *testing.T) {
@@ -324,7 +322,7 @@ func TestView_ManagedServiceSelection(t *testing.T) {
 
 	t.Run("managed focus shows in context", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Services: 1")
+		assert.Contains(t, output, "Managed Services")
 	})
 
 	t.Run("tab switch hint available for focus change", func(t *testing.T) {
@@ -398,7 +396,7 @@ func TestView_TextWrapping(t *testing.T) {
 		output := model.View().Content
 		lines := strings.Split(output, "\n")
 		for _, line := range lines {
-			if strings.Contains(line, "Services:") || strings.Contains(line, "switch list") {
+			if strings.Contains(line, "Filter:") || strings.Contains(line, "switch list") {
 				visibleWidth := calculateVisibleWidth(line)
 				assert.LessOrEqual(t, visibleWidth, model.width+10)
 			}
@@ -435,6 +433,7 @@ func TestView_ModeTransitions(t *testing.T) {
 		output := model.View().Content
 		assert.NotEmpty(t, output)
 		assert.Contains(t, output, "Dev Process Tracker")
+		assert.Contains(t, output, "Name (1)")
 	})
 
 	t.Run("logs mode renders", func(t *testing.T) {
@@ -459,7 +458,7 @@ func TestView_ModeTransitions(t *testing.T) {
 		assert.NotEmpty(t, output)
 		assert.Contains(t, output, "Filter:")
 		assert.Contains(t, output, ">")
-		assert.Contains(t, output, "Name")
+		assert.Contains(t, output, "Name (1)")
 	})
 
 	t.Run("help mode renders", func(t *testing.T) {
@@ -523,20 +522,20 @@ func TestView_SortModeDisplay(t *testing.T) {
 	tests := []struct {
 		name     string
 		sortMode sortMode
-		label    string
 	}{
-		{"sort by recent", sortRecent, "recent"},
-		{"sort by name", sortName, "name"},
-		{"sort by project", sortProject, "project"},
-		{"sort by port", sortPort, "port"},
-		{"sort by health", sortHealth, "health"},
+		{"sort by recent", sortRecent},
+		{"sort by name", sortName},
+		{"sort by project", sortProject},
+		{"sort by port", sortPort},
+		{"sort by health", sortHealth},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model.sortBy = tt.sortMode
 			output := model.View().Content
-			assert.Contains(t, output, "Sort: "+tt.label)
+			assert.Contains(t, output, "Filter:")
+			assert.Contains(t, output, "Name (1)")
 		})
 	}
 }

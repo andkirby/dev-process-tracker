@@ -109,8 +109,6 @@ func (m *topModel) renderContext(width int) string {
 	}
 
 	ctx := strings.Join([]string{
-		baseStyle.Render(fmt.Sprintf("Services: %d", m.countVisible())),
-		baseStyle.Render(fmt.Sprintf("Sort: %s", sortModeLabel(m.sortBy))),
 		baseStyle.Render("Filter: ") + filter,
 	}, " | ")
 	return fitAnsiLine(ctx, width)
@@ -206,6 +204,8 @@ func (t *processTable) scrollViewportToLine(vp *viewport.Model, selectedLine int
 func (m *topModel) renderRunningTable(width int) string {
 	visible := m.visibleServers()
 	displayNames := m.displayNames(visible)
+	headerStyle := lipgloss.NewStyle()
+	activeHeaderStyle := lipgloss.NewStyle().Bold(true)
 
 	nameW, portW, pidW, projectW, healthW := 14, 6, 7, 14, 7
 	sep := 2
@@ -215,13 +215,31 @@ func (m *topModel) renderRunningTable(width int) string {
 		cmdW = 12
 	}
 
+	nameHeader := headerStyle.Render(fixedCell(fmt.Sprintf("Name (%d)", len(visible)), nameW))
+	portHeader := headerStyle.Render(fixedCell("Port", portW))
+	pidHeader := headerStyle.Render(fixedCell("PID", pidW))
+	projectHeader := headerStyle.Render(fixedCell("Project", projectW))
+	commandHeader := headerStyle.Render(fixedCell("Command", cmdW))
+	healthHeader := headerStyle.Render(fixedCell("Health", healthW))
+
+	switch m.sortBy {
+	case sortName:
+		nameHeader = activeHeaderStyle.Render(fixedCell(fmt.Sprintf("Name (%d)", len(visible)), nameW))
+	case sortPort:
+		portHeader = activeHeaderStyle.Render(fixedCell("Port", portW))
+	case sortProject:
+		projectHeader = activeHeaderStyle.Render(fixedCell("Project", projectW))
+	case sortHealth:
+		healthHeader = activeHeaderStyle.Render(fixedCell("Health", healthW))
+	}
+
 	header := fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s",
-		fixedCell("Name", nameW), pad(sep),
-		fixedCell("Port", portW), pad(sep),
-		fixedCell("PID", pidW), pad(sep),
-		fixedCell("Project", projectW), pad(sep),
-		fixedCell("Command", cmdW), pad(sep),
-		fixedCell("Health", healthW),
+		nameHeader, pad(sep),
+		portHeader, pad(sep),
+		pidHeader, pad(sep),
+		projectHeader, pad(sep),
+		commandHeader, pad(sep),
+		healthHeader,
 	)
 	divider := fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s",
 		fixedCell(strings.Repeat("─", nameW), nameW), pad(sep),
@@ -240,7 +258,7 @@ func (m *topModel) renderRunningTable(width int) string {
 	}
 
 	var lines []string
-	lines = append(lines, fitLine(header, width))
+	lines = append(lines, fitAnsiLine(header, width))
 	lines = append(lines, fitLine(divider, width))
 
 	rowIndices := make([]int, len(visible))
@@ -303,7 +321,7 @@ func (m *topModel) renderRunningTable(width int) string {
 }
 
 func (m *topModel) renderManagedHeader(width int) string {
-	text := "Managed Services "
+	text := fmt.Sprintf("Managed Services (%d) ", len(m.managedServices()))
 	fillW := width - runewidth.StringWidth(text)
 	if fillW < 0 {
 		fillW = 0

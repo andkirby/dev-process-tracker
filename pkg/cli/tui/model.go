@@ -3,6 +3,7 @@ package tui
 import (
 	"time"
 
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
@@ -14,6 +15,7 @@ type viewMode int
 type viewFocus int
 type sortMode int
 type confirmKind int
+type modalKind int
 
 const (
 	viewModeTable viewMode = iota
@@ -21,8 +23,6 @@ const (
 	viewModeLogsDebug
 	viewModeCommand
 	viewModeSearch
-	viewModeHelp
-	viewModeConfirm
 )
 
 const (
@@ -45,12 +45,21 @@ const (
 	confirmSudoKill
 )
 
+const (
+	modalHelp modalKind = iota + 1
+	modalConfirm
+)
+
 type confirmState struct {
 	kind        confirmKind
 	prompt      string
 	pid         int
 	name        string
 	serviceName string
+}
+
+type modalState struct {
+	kind modalKind
 }
 
 type topModel struct {
@@ -89,16 +98,19 @@ type topModel struct {
 	starting map[string]time.Time
 	removed  map[string]*models.ManagedService
 
+	modal   *modalState
 	confirm *confirmState
 	table   processTable
 
+	keys             keyMap
+	help             help.Model
 	viewport         viewport.Model
 	viewportNeedsTop bool
 	highlightIndex   int
 	highlightMatches []int
 
-	lastClickTime time.Time
-	lastClickY    int
+	lastClickTime        time.Time
+	lastClickY           int
 	tableFollowSelection bool
 }
 
@@ -124,18 +136,20 @@ func Run(app AppDeps) error {
 
 func newTopModel(app AppDeps) *topModel {
 	m := &topModel{
-		app:           app,
-		lastUpdate:    time.Now(),
-		lastInput:     time.Now(),
-		mode:          viewModeTable,
-		focus:         focusRunning,
-		followLogs:    false,
-		health:        make(map[int]string),
-		healthDetails: make(map[int]*health.HealthCheck),
-		healthChk:     health.NewChecker(800 * time.Millisecond),
-		sortBy:        sortRecent,
-		starting:      make(map[string]time.Time),
-		removed:       make(map[string]*models.ManagedService),
+		app:                  app,
+		lastUpdate:           time.Now(),
+		lastInput:            time.Now(),
+		mode:                 viewModeTable,
+		focus:                focusRunning,
+		followLogs:           false,
+		health:               make(map[int]string),
+		healthDetails:        make(map[int]*health.HealthCheck),
+		healthChk:            health.NewChecker(800 * time.Millisecond),
+		sortBy:               sortRecent,
+		starting:             make(map[string]time.Time),
+		removed:              make(map[string]*models.ManagedService),
+		keys:                 defaultKeyMap(),
+		help:                 help.New(),
 		tableFollowSelection: true,
 	}
 	if servers, err := app.DiscoverServers(); err == nil {

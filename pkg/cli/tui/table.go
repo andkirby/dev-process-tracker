@@ -120,9 +120,10 @@ func (m *topModel) renderStatusLine(width int) string {
 }
 
 func (m *topModel) renderFooter(width int) string {
-	footer := fmt.Sprintf("Services: %d | Tab switch | Enter logs/start | Page Up/Down scroll | / filter | ? help | D debug", m.countVisible())
 	s := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Italic(true)
-	return s.Render(fitLine(footer, width))
+	h := m.help
+	h.SetWidth(width)
+	return s.Render(fitLine(fmt.Sprintf("Services: %d", m.countVisible()), width)) + "\n" + s.Render(h.View(m.keys))
 }
 
 func (t *processTable) sectionHeights(totalHeight, runningLines int) (int, int) {

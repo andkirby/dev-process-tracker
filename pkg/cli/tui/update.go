@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/devports/devpt/pkg/process"
@@ -66,21 +67,21 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.mode == viewModeLogs {
-			switch msg.String() {
-			case "q", "ctrl+c":
+			switch {
+			case key.Matches(msg, m.keys.Quit):
 				return m, tea.Quit
-			case "esc", "b":
+			case key.Matches(msg, m.keys.Back):
 				m.clearLogsView()
 				return m, nil
-			case "f":
+			case key.Matches(msg, m.keys.Follow):
 				m.followLogs = !m.followLogs
 				return m, nil
-			case "n":
+			case key.Matches(msg, m.keys.NextMatch):
 				if len(m.highlightMatches) > 0 {
 					m.highlightIndex = (m.highlightIndex + 1) % len(m.highlightMatches)
 				}
 				return m, nil
-			case "N":
+			case key.Matches(msg, m.keys.PrevMatch):
 				if len(m.highlightMatches) > 0 {
 					m.highlightIndex = (m.highlightIndex - 1 + len(m.highlightMatches)) % len(m.highlightMatches)
 				}
@@ -93,10 +94,10 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.mode == viewModeLogsDebug {
-			switch msg.String() {
-			case "q", "ctrl+c":
+			switch {
+			case key.Matches(msg, m.keys.Quit):
 				return m, tea.Quit
-			case "b", "esc":
+			case key.Matches(msg, m.keys.Back):
 				m.mode = viewModeTable
 				return m, nil
 			default:
@@ -106,10 +107,13 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		switch msg.String() {
-		case "q", "ctrl+c":
+		switch {
+		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
-		case "tab":
+		case m.modal != nil && key.Matches(msg, m.keys.Help):
+			m.closeModal()
+			return m, nil
+		case key.Matches(msg, m.keys.Tab):
 			if m.focus == focusRunning {
 				m.focus = focusManaged
 				m.tableFollowSelection = true
@@ -126,76 +130,76 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "?", "f1":
-			m.mode = viewModeHelp
+		case key.Matches(msg, m.keys.Help):
+			m.openHelpModal()
 			return m, nil
-		case "/":
+		case key.Matches(msg, m.keys.Search):
 			m.mode = viewModeSearch
 			return m, nil
-		case "ctrl+l":
+		case key.Matches(msg, m.keys.ClearFilter):
 			m.searchQuery = ""
 			m.cmdStatus = "Filter cleared"
 			return m, nil
-		case "s":
+		case key.Matches(msg, m.keys.Sort):
 			m.sortBy = (m.sortBy + 1) % sortModeCount
 			return m, nil
-		case "h":
+		case key.Matches(msg, m.keys.Health):
 			m.showHealthDetail = !m.showHealthDetail
 			return m, nil
-		case "D":
+		case key.Matches(msg, m.keys.Debug):
 			m.mode = viewModeLogsDebug
 			m.initDebugViewport()
 			return m, nil
-		case "ctrl+a":
+		case key.Matches(msg, m.keys.Add):
 			m.mode = viewModeCommand
 			m.cmdInput = "add "
 			return m, nil
-		case "ctrl+r":
+		case key.Matches(msg, m.keys.Restart):
 			m.cmdStatus = m.restartSelected()
 			m.refresh()
 			return m, nil
-		case "ctrl+e":
+		case key.Matches(msg, m.keys.Stop):
 			m.prepareStopConfirm()
 			return m, nil
-		case "x", "delete", "ctrl+d":
+		case key.Matches(msg, m.keys.Remove):
 			if m.focus == focusManaged {
 				managed := m.managedServices()
 				if m.managedSel >= 0 && m.managedSel < len(managed) {
 					name := managed[m.managedSel].Name
-					m.confirm = &confirmState{
+					m.openConfirmModal(&confirmState{
 						kind:   confirmRemoveService,
 						prompt: fmt.Sprintf("Remove %q from registry?", name),
 						name:   name,
-					}
-					m.mode = viewModeConfirm
+					})
 				} else {
 					m.cmdStatus = "No managed service selected"
 				}
 			}
 			return m, nil
-		case ":", "shift+;", ";", "c":
+		case msg.String() == ":" || msg.String() == "shift+;" || msg.String() == ";" || msg.String() == "c":
 			m.mode = viewModeCommand
 			m.cmdInput = ""
 			return m, nil
-		case "esc":
+		case msg.String() == "esc":
+			if m.modal != nil {
+				m.closeModal()
+				return m, nil
+			}
 			switch m.mode {
 			case viewModeTable:
 				return m, tea.Quit
 			case viewModeLogs:
 				m.clearLogsView()
-			case viewModeHelp, viewModeConfirm:
-				m.mode = viewModeTable
-				m.confirm = nil
 			}
 			return m, nil
-		case "b":
+		case msg.String() == "b":
 			if m.mode == viewModeLogs {
 				m.clearLogsView()
 			}
 			return m, nil
-		case "backspace":
+		case msg.String() == "backspace":
 			return m, nil
-		case "up", "k":
+		case key.Matches(msg, m.keys.Up):
 			if m.focus == focusRunning && m.selected > 0 {
 				m.selected--
 				m.tableFollowSelection = true
@@ -205,7 +209,7 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tableFollowSelection = true
 			}
 			return m, nil
-		case "down", "j":
+		case key.Matches(msg, m.keys.Down):
 			if m.focus == focusRunning {
 				if m.selected < len(m.visibleServers())-1 {
 					m.selected++
@@ -219,14 +223,14 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
-		case "y":
-			if m.mode == viewModeConfirm {
+		case key.Matches(msg, m.keys.Confirm):
+			if m.activeModalKind() == modalConfirm {
 				cmd := m.executeConfirm(true)
 				return m, cmd
 			}
 			return m, nil
-		case "n":
-			if m.mode == viewModeConfirm {
+		case key.Matches(msg, m.keys.Cancel):
+			if m.activeModalKind() == modalConfirm {
 				cmd := m.executeConfirm(false)
 				return m, cmd
 			}
@@ -234,21 +238,17 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.highlightIndex = (m.highlightIndex + 1) % len(m.highlightMatches)
 			}
 			return m, nil
-		case "N":
-			if m.mode == viewModeLogs && len(m.highlightMatches) > 0 {
-				m.highlightIndex = (m.highlightIndex - 1 + len(m.highlightMatches)) % len(m.highlightMatches)
-			}
-			return m, nil
-		case "pgup", "pgdown", "home", "end":
+		case msg.String() == "pgup" || msg.String() == "pgdown" || msg.String() == "home" || msg.String() == "end":
 			m.tableFollowSelection = false
 			cmd := m.table.updateFocusedViewport(m.focus, msg)
 			return m, cmd
-		case "enter":
+		case key.Matches(msg, m.keys.Enter):
 			switch m.mode {
-			case viewModeConfirm:
-				cmd := m.executeConfirm(true)
-				return m, cmd
 			case viewModeTable:
+				if m.activeModalKind() == modalConfirm {
+					cmd := m.executeConfirm(true)
+					return m, cmd
+				}
 				return m.handleEnterKey()
 			}
 			return m, nil
@@ -257,12 +257,16 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseMsg:
 		mouse := msg.Mouse()
-		if m.mode == viewModeConfirm {
+		if m.modal != nil {
 			if _, ok := msg.(tea.MouseClickMsg); ok && mouse.Button == tea.MouseLeft {
-				bounds := m.confirmModalBounds(m.width)
+				bounds := m.activeModalBounds(m.width, m.baseViewContent(m.width))
 				if !bounds.contains(mouse.X, mouse.Y) {
-					cmd := m.executeConfirm(false)
-					return m, cmd
+					if m.activeModalKind() == modalConfirm {
+						cmd := m.executeConfirm(false)
+						return m, cmd
+					}
+					m.closeModal()
+					return m, nil
 				}
 				return m, nil
 			}
@@ -294,6 +298,7 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.help.SetWidth(msg.Width)
 	case tickMsg:
 		m.refresh()
 		if m.mode == viewModeLogs && m.followLogs {

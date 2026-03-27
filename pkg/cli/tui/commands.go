@@ -86,7 +86,7 @@ func (m *topModel) runCommand(input string) string {
 	}
 	switch args[0] {
 	case "help":
-		m.mode = viewModeHelp
+		m.openHelpModal()
 		return ""
 	case "list":
 		services := m.app.ListServices()
@@ -124,8 +124,7 @@ func (m *topModel) runCommand(input string) string {
 		if svc == nil {
 			return fmt.Sprintf("service %q not found", args[1])
 		}
-		m.confirm = &confirmState{kind: confirmRemoveService, prompt: fmt.Sprintf("Remove %q from registry?", svc.Name), name: svc.Name}
-		m.mode = viewModeConfirm
+		m.openConfirmModal(&confirmState{kind: confirmRemoveService, prompt: fmt.Sprintf("Remove %q from registry?", svc.Name), name: svc.Name})
 		return ""
 	case "restore":
 		if len(args) < 2 {
@@ -220,18 +219,16 @@ func (m *topModel) prepareStopConfirm() {
 		prompt = fmt.Sprintf("Stop %q (PID %d)?", srv.ManagedService.Name, srv.ProcessRecord.PID)
 		serviceName = srv.ManagedService.Name
 	}
-	m.confirm = &confirmState{kind: confirmStopPID, prompt: prompt, pid: srv.ProcessRecord.PID, serviceName: serviceName}
-	m.mode = viewModeConfirm
+	m.openConfirmModal(&confirmState{kind: confirmStopPID, prompt: prompt, pid: srv.ProcessRecord.PID, serviceName: serviceName})
 }
 
 func (m *topModel) executeConfirm(yes bool) tea.Cmd {
 	if m.confirm == nil {
-		m.mode = viewModeTable
+		m.closeModal()
 		return nil
 	}
 	c := *m.confirm
-	m.confirm = nil
-	m.mode = viewModeTable
+	m.closeModal()
 	if !yes {
 		m.cmdStatus = "Cancelled"
 		return nil
@@ -240,8 +237,7 @@ func (m *topModel) executeConfirm(yes bool) tea.Cmd {
 	case confirmStopPID:
 		if err := m.app.StopProcess(c.pid, 5*time.Second); err != nil {
 			if errors.Is(err, process.ErrNeedSudo) {
-				m.confirm = &confirmState{kind: confirmSudoKill, prompt: fmt.Sprintf("Run sudo kill -9 %d now?", c.pid), pid: c.pid}
-				m.mode = viewModeConfirm
+				m.openConfirmModal(&confirmState{kind: confirmSudoKill, prompt: fmt.Sprintf("Run sudo kill -9 %d now?", c.pid), pid: c.pid})
 				return nil
 			}
 			if isProcessFinishedErr(err) {

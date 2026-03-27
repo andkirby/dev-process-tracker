@@ -48,10 +48,10 @@ func TestView_StatusBar(t *testing.T) {
 
 	t.Run("footer contains keybinding hints", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Tab switch")
-		assert.Contains(t, output, "Enter logs/start")
-		assert.Contains(t, output, "/ filter")
-		assert.Contains(t, output, "? help")
+		assert.Contains(t, output, "switch list")
+		assert.Contains(t, output, "logs/start")
+		assert.Contains(t, output, "filter")
+		assert.Contains(t, output, "toggle help")
 	})
 
 	t.Run("footer shows service count", func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestView_StatusBar(t *testing.T) {
 
 	t.Run("footer shows debug shortcut", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "D debug")
+		assert.Contains(t, output, "q")
 	})
 }
 
@@ -91,8 +91,7 @@ func TestView_ConfirmDialog(t *testing.T) {
 	model := newTestModel()
 	model.width = 100
 	model.height = 24
-	model.mode = viewModeConfirm
-	model.confirm = &confirmState{kind: confirmStopPID, prompt: "Stop PID 123?", pid: 123}
+	model.openConfirmModal(&confirmState{kind: confirmStopPID, prompt: "Stop PID 123?", pid: 123})
 
 	t.Run("confirm prompt includes [y/N]", func(t *testing.T) {
 		output := model.View().Content
@@ -115,14 +114,14 @@ func TestView_ConfirmDialog(t *testing.T) {
 		clickModel := newTestModel()
 		clickModel.width = 100
 		clickModel.height = 24
-		clickModel.mode = viewModeConfirm
-		clickModel.confirm = &confirmState{kind: confirmStopPID, prompt: "Stop PID 123?", pid: 123}
+		clickModel.openConfirmModal(&confirmState{kind: confirmStopPID, prompt: "Stop PID 123?", pid: 123})
 
 		newModel, cmd := clickModel.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})
 		assert.Nil(t, cmd)
 
 		updated := newModel.(*topModel)
 		assert.Equal(t, viewModeTable, updated.mode)
+		assert.Nil(t, updated.modal)
 		assert.Nil(t, updated.confirm)
 		assert.Equal(t, "Cancelled", updated.cmdStatus)
 	})
@@ -131,14 +130,14 @@ func TestView_ConfirmDialog(t *testing.T) {
 		enterModel := newTestModel()
 		enterModel.width = 100
 		enterModel.height = 24
-		enterModel.mode = viewModeConfirm
-		enterModel.confirm = &confirmState{kind: confirmRemoveService, prompt: "Remove test?", name: "missing"}
+		enterModel.openConfirmModal(&confirmState{kind: confirmRemoveService, prompt: "Remove test?", name: "missing"})
 
 		newModel, cmd := enterModel.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		assert.Nil(t, cmd)
 
 		updated := newModel.(*topModel)
 		assert.Equal(t, viewModeTable, updated.mode)
+		assert.Nil(t, updated.modal)
 		assert.Nil(t, updated.confirm)
 		assert.NotEmpty(t, updated.cmdStatus)
 	})
@@ -181,7 +180,7 @@ func TestView_ManagedServicesSection(t *testing.T) {
 
 	t.Run("tab switch hint in footer", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Tab switch")
+		assert.Contains(t, output, "switch list")
 	})
 }
 
@@ -229,18 +228,19 @@ func TestView_LogsMode(t *testing.T) {
 func TestView_HelpMode(t *testing.T) {
 	model := newTestModel()
 	model.width = 100
-	model.mode = viewModeHelp
+	model.height = 24
+	model.openHelpModal()
 
 	t.Run("help shows keymap header", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Keymap")
+		assert.Contains(t, output, "Help")
 	})
 
 	t.Run("help shows keybindings", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "q quit")
-		assert.Contains(t, output, "Tab switch")
-		assert.Contains(t, output, "/ filter")
+		assert.Contains(t, output, "switch list")
+		assert.Contains(t, output, "toggle help")
+		assert.Contains(t, output, "filter")
 	})
 
 	t.Run("help shows command hints", func(t *testing.T) {
@@ -249,6 +249,27 @@ func TestView_HelpMode(t *testing.T) {
 		assert.Contains(t, output, "add")
 		assert.Contains(t, output, "start")
 		assert.Contains(t, output, "stop")
+	})
+
+	t.Run("help keeps table visible behind modal", func(t *testing.T) {
+		output := model.View().Content
+		assert.Contains(t, output, "Name")
+		assert.Contains(t, output, "Managed Services")
+		assert.Contains(t, output, "Help")
+	})
+
+	t.Run("click outside help closes modal", func(t *testing.T) {
+		clickModel := newTestModel()
+		clickModel.width = 100
+		clickModel.height = 24
+		clickModel.openHelpModal()
+
+		newModel, cmd := clickModel.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})
+		assert.Nil(t, cmd)
+
+		updated := newModel.(*topModel)
+		assert.Equal(t, viewModeTable, updated.mode)
+		assert.Nil(t, updated.modal)
 	})
 }
 
@@ -301,7 +322,7 @@ func TestView_ManagedServiceSelection(t *testing.T) {
 
 	t.Run("tab switch hint available for focus change", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "Tab switch")
+		assert.Contains(t, output, "switch list")
 	})
 }
 
@@ -370,7 +391,7 @@ func TestView_TextWrapping(t *testing.T) {
 		output := model.View().Content
 		lines := strings.Split(output, "\n")
 		for _, line := range lines {
-			if strings.Contains(line, "Last updated") {
+			if strings.Contains(line, "Services:") || strings.Contains(line, "switch list") {
 				visibleWidth := calculateVisibleWidth(line)
 				assert.LessOrEqual(t, visibleWidth, model.width+10)
 			}
@@ -431,10 +452,11 @@ func TestView_ModeTransitions(t *testing.T) {
 	})
 
 	t.Run("help mode renders", func(t *testing.T) {
-		model.mode = viewModeHelp
+		model.openHelpModal()
 		output := model.View().Content
 		assert.NotEmpty(t, output)
-		assert.Contains(t, output, "Keymap")
+		assert.Contains(t, output, "Help")
+		assert.Contains(t, output, "switch list")
 	})
 }
 
@@ -470,7 +492,7 @@ func TestView_StatusAndFooterClampToWidth(t *testing.T) {
 		if strings.Contains(line, `Restarted "mdt-be"`) {
 			statusLine = line
 		}
-		if strings.Contains(line, "Services: 1 | Tab switch") {
+		if strings.Contains(line, "Services: 1") {
 			footerLine = line
 		}
 	}

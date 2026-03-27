@@ -14,14 +14,31 @@ type modalBounds struct {
 	height int
 }
 
-func (m *topModel) renderConfirmModal(width int) string {
-	if m.confirm == nil {
-		return ""
-	}
+func (m *topModel) openHelpModal() {
+	m.modal = &modalState{kind: modalHelp}
+}
 
+func (m *topModel) openConfirmModal(confirm *confirmState) {
+	m.confirm = confirm
+	m.modal = &modalState{kind: modalConfirm}
+}
+
+func (m *topModel) closeModal() {
+	m.modal = nil
+	m.confirm = nil
+}
+
+func (m *topModel) activeModalKind() modalKind {
+	if m.modal == nil {
+		return 0
+	}
+	return m.modal.kind
+}
+
+func renderModal(title, body, hint string, width, maxWidth int, accent string) string {
 	boxWidth := width - 8
-	if boxWidth > 72 {
-		boxWidth = 72
+	if maxWidth > 0 && boxWidth > maxWidth {
+		boxWidth = maxWidth
 	}
 	if boxWidth < 24 {
 		boxWidth = width
@@ -32,21 +49,64 @@ func (m *topModel) renderConfirmModal(width int) string {
 		bodyWidth = boxWidth
 	}
 
-	content := strings.Join([]string{
-		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("11")).Render("Confirm"),
-		fitLine(m.confirm.prompt, bodyWidth),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fitLine("Enter/y confirm, n/Esc cancel", bodyWidth)),
-	}, "\n")
+	lines := []string{
+		lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(accent)).Render(title),
+	}
+	for _, line := range strings.Split(body, "\n") {
+		lines = append(lines, fitAnsiLine(line, bodyWidth))
+	}
+	if hint != "" {
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render(fitAnsiLine(hint, bodyWidth)))
+	}
+	content := strings.Join(lines, "\n")
 
 	return lipgloss.NewStyle().
 		Width(boxWidth).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("11")).
+		BorderForeground(lipgloss.Color(accent)).
 		Padding(0, 1).
 		Render(content)
 }
 
-func overlayConfirmModal(background, overlay string, width int) string {
+func (m *topModel) renderConfirmModal(width int) string {
+	if m.confirm == nil {
+		return ""
+	}
+	return renderModal("Confirm", m.confirm.prompt, "Enter/y confirm, n/Esc cancel", width, 72, "11")
+}
+
+func (m *topModel) renderHelpModal(width int) string {
+	h := m.help
+	boxWidth := width - 12
+	if boxWidth > 96 {
+		boxWidth = 96
+	}
+	if boxWidth < 36 {
+		boxWidth = width
+	}
+	h.ShowAll = true
+	h.SetWidth(boxWidth - 4)
+
+	body := strings.Join([]string{
+		h.View(m.keys),
+		"",
+		"Commands: add, start, stop, remove, restore, list, help",
+	}, "\n")
+	return renderModal("Help", body, "Esc/? closes", width, boxWidth, "12")
+}
+
+func (m *topModel) activeModalOverlay(width int) string {
+	switch m.activeModalKind() {
+	case modalHelp:
+		return m.renderHelpModal(width)
+	case modalConfirm:
+		return m.renderConfirmModal(width)
+	default:
+		return ""
+	}
+}
+
+func overlayModal(background, overlay string, width int) string {
 	bgLines := strings.Split(strings.TrimRight(background, "\n"), "\n")
 	ovLines := strings.Split(overlay, "\n")
 	if len(bgLines) == 0 || len(ovLines) == 0 {
@@ -72,10 +132,10 @@ func overlayConfirmModal(background, overlay string, width int) string {
 	return strings.Join(bgLines, "\n") + "\n"
 }
 
-func (m *topModel) confirmModalBounds(width int) modalBounds {
-	background := m.baseViewContent(width)
+func (m *topModel) activeModalBounds(width int, background string) modalBounds {
+	overlay := m.activeModalOverlay(width)
 	bgLines := strings.Split(strings.TrimRight(background, "\n"), "\n")
-	ovLines := strings.Split(m.renderConfirmModal(width), "\n")
+	ovLines := strings.Split(overlay, "\n")
 	return calculateModalBounds(bgLines, ovLines, width)
 }
 
@@ -115,4 +175,14 @@ func padAnsiLine(line string, targetWidth int) string {
 		return line
 	}
 	return line + strings.Repeat(" ", targetWidth-width)
+}
+
+func fitAnsiLine(line string, targetWidth int) string {
+	if targetWidth <= 0 {
+		return line
+	}
+	if ansi.StringWidth(line) > targetWidth {
+		return ansi.Truncate(line, targetWidth, "...")
+	}
+	return padAnsiLine(line, targetWidth)
 }

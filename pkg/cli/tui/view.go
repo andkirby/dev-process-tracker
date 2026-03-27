@@ -22,8 +22,8 @@ func (m *topModel) View() tea.View {
 	}
 
 	content := m.baseViewContent(width)
-	if m.mode == viewModeConfirm && m.confirm != nil {
-		content = overlayConfirmModal(content, m.renderConfirmModal(width), width)
+	if m.modal != nil {
+		content = overlayModal(content, m.activeModalOverlay(width), width)
 	}
 
 	v := tea.NewView(content)
@@ -46,23 +46,20 @@ func (m *topModel) baseViewContent(width int) string {
 	}
 
 	switch m.mode {
-	case viewModeTable, viewModeCommand, viewModeSearch, viewModeConfirm:
+	case viewModeTable, viewModeCommand, viewModeSearch:
 		b.WriteString("\n")
 		b.WriteString(m.renderContext(width))
 		b.WriteString("\n")
 	}
 
 	switch m.mode {
-	case viewModeHelp:
-		b.WriteString(m.renderHelp(width))
-		b.WriteString("\n")
 	case viewModeLogs:
 		b.WriteString(m.renderLogs(width))
 		b.WriteString("\n")
 	case viewModeLogsDebug:
 		b.WriteString(m.renderLogsDebug(width))
 		b.WriteString("\n")
-	case viewModeTable, viewModeConfirm:
+	case viewModeTable:
 		b.WriteString(m.table.Render(m, width))
 		b.WriteString("\n")
 	}
@@ -84,7 +81,7 @@ func (m *topModel) baseViewContent(width int) string {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render(fitLine("/"+m.searchQuery, width)))
 		b.WriteString("\n")
 	}
-	if m.mode == viewModeTable || m.mode == viewModeConfirm {
+	if m.mode == viewModeTable {
 		if sl := m.renderStatusLine(width); sl != "" {
 			b.WriteString(sl)
 			b.WriteString("\n")
@@ -169,20 +166,4 @@ func (m *topModel) logsHeaderView() string {
 		name = fmt.Sprintf("pid:%d", m.logPID)
 	}
 	return fmt.Sprintf("Logs: %s (b back, f follow:%t)", name, m.followLogs)
-}
-
-func (m topModel) renderHelp(width int) string {
-	lines := []string{
-		"Keymap",
-		"q quit, Tab switch list, Enter logs/start, / filter, Ctrl+L clear filter, s sort, h health detail, ? help",
-		"Ctrl+A add command, Ctrl+R restart selected, Ctrl+E stop selected",
-		"Logs: b back, f toggle follow",
-		"Managed list: x remove selected service",
-		"Commands: add, start, stop, remove, restore, list, help",
-	}
-	var out []string
-	for _, l := range lines {
-		out = append(out, fitLine(l, width))
-	}
-	return strings.Join(out, "\n")
 }

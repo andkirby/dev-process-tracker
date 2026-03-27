@@ -45,7 +45,7 @@ func TestTUISimpleUpdate(t *testing.T) {
 		newModel, cmd := model.Update(tea.KeyPressMsg{Text: "?", Code: '?'})
 		assert.Nil(t, cmd)
 		updatedModel := newModel.(*topModel)
-		assert.Equal(t, viewModeHelp, updatedModel.mode)
+		assert.Equal(t, modalHelp, updatedModel.activeModalKind())
 	})
 
 	t.Run("s key cycles through sort modes", func(t *testing.T) {
@@ -77,11 +77,12 @@ func TestTUIKeySequence(t *testing.T) {
 
 		newModel, _ := model.Update(tea.KeyPressMsg{Text: "?", Code: '?'})
 		model = newModel.(*topModel)
-		assert.Equal(t, viewModeHelp, model.mode)
+		assert.Equal(t, modalHelp, model.activeModalKind())
 
 		newModel, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 		model = newModel.(*topModel)
 		assert.Equal(t, viewModeTable, model.mode)
+		assert.Nil(t, model.modal)
 	})
 }
 
@@ -114,10 +115,10 @@ func TestTUIViewRendering(t *testing.T) {
 	})
 
 	t.Run("help view contains help text", func(t *testing.T) {
-		model.mode = viewModeHelp
+		model.openHelpModal()
 		output := model.View()
-		assert.Contains(t, output.Content, "Keymap")
-		assert.Contains(t, output.Content, "q quit")
+		assert.Contains(t, output.Content, "Help")
+		assert.Contains(t, output.Content, "switch list")
 	})
 }
 

@@ -257,6 +257,17 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseMsg:
 		mouse := msg.Mouse()
+		if m.mode == viewModeConfirm {
+			if _, ok := msg.(tea.MouseClickMsg); ok && mouse.Button == tea.MouseLeft {
+				bounds := m.confirmModalBounds(m.width)
+				if !bounds.contains(mouse.X, mouse.Y) {
+					cmd := m.executeConfirm(false)
+					return m, cmd
+				}
+				return m, nil
+			}
+			return m, nil
+		}
 		if m.mode == viewModeTable {
 			if _, ok := msg.(tea.MouseClickMsg); ok && mouse.Button == tea.MouseLeft {
 				return m.handleTableMouseClick(msg)

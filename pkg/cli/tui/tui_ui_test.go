@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/devports/devpt/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
@@ -89,17 +90,57 @@ func TestView_CommandMode(t *testing.T) {
 func TestView_ConfirmDialog(t *testing.T) {
 	model := newTestModel()
 	model.width = 100
+	model.height = 24
 	model.mode = viewModeConfirm
 	model.confirm = &confirmState{kind: confirmStopPID, prompt: "Stop PID 123?", pid: 123}
 
 	t.Run("confirm prompt includes [y/N]", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "[y/N]")
+		assert.Contains(t, output, "Enter/y confirm, n/Esc cancel")
 	})
 
 	t.Run("confirm shows prompt text", func(t *testing.T) {
 		output := model.View().Content
 		assert.Contains(t, output, "Stop PID 123?")
+	})
+
+	t.Run("confirm keeps table visible behind modal", func(t *testing.T) {
+		output := model.View().Content
+		assert.Contains(t, output, "Name")
+		assert.Contains(t, output, "Managed Services")
+		assert.Contains(t, output, "Confirm")
+	})
+
+	t.Run("click outside confirm closes modal", func(t *testing.T) {
+		clickModel := newTestModel()
+		clickModel.width = 100
+		clickModel.height = 24
+		clickModel.mode = viewModeConfirm
+		clickModel.confirm = &confirmState{kind: confirmStopPID, prompt: "Stop PID 123?", pid: 123}
+
+		newModel, cmd := clickModel.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})
+		assert.Nil(t, cmd)
+
+		updated := newModel.(*topModel)
+		assert.Equal(t, viewModeTable, updated.mode)
+		assert.Nil(t, updated.confirm)
+		assert.Equal(t, "Cancelled", updated.cmdStatus)
+	})
+
+	t.Run("enter confirms action in confirm mode", func(t *testing.T) {
+		enterModel := newTestModel()
+		enterModel.width = 100
+		enterModel.height = 24
+		enterModel.mode = viewModeConfirm
+		enterModel.confirm = &confirmState{kind: confirmRemoveService, prompt: "Remove test?", name: "missing"}
+
+		newModel, cmd := enterModel.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		assert.Nil(t, cmd)
+
+		updated := newModel.(*topModel)
+		assert.Equal(t, viewModeTable, updated.mode)
+		assert.Nil(t, updated.confirm)
+		assert.NotEmpty(t, updated.cmdStatus)
 	})
 }
 

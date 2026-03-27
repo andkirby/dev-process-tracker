@@ -21,6 +21,18 @@ func (m *topModel) View() tea.View {
 		m.height = 24
 	}
 
+	content := m.baseViewContent(width)
+	if m.mode == viewModeConfirm && m.confirm != nil {
+		content = overlayConfirmModal(content, m.renderConfirmModal(width), width)
+	}
+
+	v := tea.NewView(content)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+func (m *topModel) baseViewContent(width int) string {
 	var b strings.Builder
 	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
@@ -50,7 +62,7 @@ func (m *topModel) View() tea.View {
 	case viewModeLogsDebug:
 		b.WriteString(m.renderLogsDebug(width))
 		b.WriteString("\n")
-	case viewModeTable:
+	case viewModeTable, viewModeConfirm:
 		b.WriteString(m.table.Render(m, width))
 		b.WriteString("\n")
 	}
@@ -72,12 +84,7 @@ func (m *topModel) View() tea.View {
 		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render(fitLine("/"+m.searchQuery, width)))
 		b.WriteString("\n")
 	}
-	if m.mode == viewModeConfirm && m.confirm != nil {
-		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true).Render(fitLine(m.confirm.prompt+" [y/N]", width)))
-		b.WriteString("\n")
-	}
-	if m.mode == viewModeTable {
+	if m.mode == viewModeTable || m.mode == viewModeConfirm {
 		if sl := m.renderStatusLine(width); sl != "" {
 			b.WriteString(sl)
 			b.WriteString("\n")
@@ -114,10 +121,7 @@ func (m *topModel) View() tea.View {
 		b.WriteString("\n")
 	}
 
-	v := tea.NewView(b.String())
-	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
-	return v
+	return b.String()
 }
 
 func (m *topModel) renderLogs(width int) string {

@@ -36,9 +36,9 @@ func TestView_HeaderContent(t *testing.T) {
 		assert.Contains(t, output, "Health Monitor")
 	})
 
-	t.Run("header contains quit hint", func(t *testing.T) {
+	t.Run("header omits quit hint", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "q quit")
+		assert.NotContains(t, output, "q quit")
 	})
 }
 
@@ -59,9 +59,9 @@ func TestView_StatusBar(t *testing.T) {
 		assert.Contains(t, output, "Name (1)")
 	})
 
-	t.Run("footer shows debug shortcut", func(t *testing.T) {
+	t.Run("footer stays compact", func(t *testing.T) {
 		output := model.View().Content
-		assert.Contains(t, output, "q")
+		assert.NotContains(t, output, "D for debug")
 	})
 }
 

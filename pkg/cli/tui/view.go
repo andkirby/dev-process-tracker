@@ -44,7 +44,7 @@ func (m *topModel) baseViewContent(width int) string {
 		b.WriteString(headerStyle.Render("Viewport Debug Mode (b back, q quit)"))
 		b.WriteString("\n")
 	default:
-		b.WriteString(headerStyle.Render("Dev Process Tracker - Health Monitor (q quit, D for debug)"))
+		b.WriteString(headerStyle.Render("Dev Process Tracker - Health Monitor"))
 	}
 
 	switch m.mode {

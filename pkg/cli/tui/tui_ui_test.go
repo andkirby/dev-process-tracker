@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/devports/devpt/pkg/buildinfo"
 	"github.com/devports/devpt/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
@@ -34,6 +35,11 @@ func TestView_HeaderContent(t *testing.T) {
 		output := model.View().Content
 		assert.Contains(t, output, "Dev Process Tracker")
 		assert.Contains(t, output, "Health Monitor")
+	})
+
+	t.Run("header shows current version", func(t *testing.T) {
+		output := model.View().Content
+		assert.Contains(t, output, buildinfo.Version)
 	})
 
 	t.Run("header omits quit hint", func(t *testing.T) {

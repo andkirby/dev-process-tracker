@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/devports/devpt/pkg/buildinfo"
 )
 
 func (m *topModel) View() tea.View {
@@ -35,6 +37,7 @@ func (m *topModel) View() tea.View {
 func (m *topModel) baseViewContent(width int) string {
 	var b strings.Builder
 	headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	versionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 
 	switch m.mode {
 	case viewModeLogs:
@@ -45,6 +48,8 @@ func (m *topModel) baseViewContent(width int) string {
 		b.WriteString("\n")
 	default:
 		b.WriteString(headerStyle.Render("Dev Process Tracker - Health Monitor"))
+		b.WriteString(" ")
+		b.WriteString(versionStyle.Render(buildinfo.Version))
 	}
 
 	switch m.mode {

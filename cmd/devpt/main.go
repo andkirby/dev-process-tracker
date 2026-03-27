@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/devports/devpt/pkg/buildinfo"
 	"github.com/devports/devpt/pkg/cli"
 )
 
@@ -44,7 +45,7 @@ func main() {
 		printUsage()
 		os.Exit(0)
 	case "--version", "-v":
-		fmt.Println("devpt version 0.1.0")
+		fmt.Printf("devpt version %s\n", buildinfo.Version)
 		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)

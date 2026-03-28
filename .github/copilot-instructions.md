@@ -159,6 +159,8 @@ If adding user-facing features, also update README.md and QUICKSTART.md.
 
 ## Common Tasks
 
+## Common Tasks
+
 ### Add a New CLI Command
 1. Add handler function in cmd/devpt/main.go switch statement (e.g., `case "mycommand"`)
 2. Call existing app methods (app.ListServices(), app.StartService(), etc.) or create new methods in pkg/cli/app.go
@@ -192,6 +194,7 @@ If adding user-facing features, also update README.md and QUICKSTART.md.
 - **QUICKSTART.md** - Getting started guide for new users
 - **IMPLEMENTATION_SUMMARY.md** - Architecture and feature overview (reference only)
 - **techspec.md** - Original technical specification
+- **.agents/skills/devpt-release/SKILL.md** - Release workflow (changelog + version bump)
 
 Update README and QUICKSTART when adding user-facing features or commands.
 

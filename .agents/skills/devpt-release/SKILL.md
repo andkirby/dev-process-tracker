@@ -27,6 +27,15 @@ description: Increment version and update CHANGELOG.md from commits since last u
    - "Fixed Z so W" for bugs
    - Group related fixes with their feature when they're clearly connected
 7. **Update CHANGELOG.md** — prepend new version section
+8. **Set version** — run `./scripts/set-version.sh <X.Y.Z>` to update version.go, commit, and tag
+9. **Push** — `git push && git push origin v<X.Y.Z>`
+
+## Version Management
+
+- **Version file**: `pkg/buildinfo/version.go` (`const Version = "X.Y.Z"`)
+- **Set version script**: `./scripts/set-version.sh <X.Y.Z>` — updates version.go, commits, creates tag
+- **Tags use `v` prefix**: `v0.2.1`
+- **Pre-push hook**: validates version.go matches latest tag (via lefthook)
 
 ## Grouping Heuristics
 

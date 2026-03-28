@@ -1,0 +1,26 @@
+# Lefthook configuration for dev-process-tracker
+# Install: go install github.com/evilmartians/lefthook@latest && lefthook install
+
+pre-push:
+  parallel: false
+  commands:
+    validate-version:
+      name: Validate code version matches git tag
+      run: |
+        TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+        if [ -n "$TAG" ]; then
+          # Strip 'v' prefix for comparison
+          TAG_VERSION="${TAG#v}"
+          CODE_VERSION=$(sed -n 's/const Version = "\([^"]*\)"/\1/p' pkg/buildinfo/version.go)
+          if [ "$CODE_VERSION" != "$TAG_VERSION" ]; then
+            echo ""
+            echo "❌ Version mismatch!"
+            echo "   pkg/buildinfo/version.go: $CODE_VERSION"
+            echo "   Latest git tag:           $TAG"
+            echo ""
+            echo "Fix: Either update pkg/buildinfo/version.go to \"$TAG_VERSION\""
+            echo "     or delete the tag: git tag -d $TAG && git push --delete origin $TAG"
+            exit 1
+          fi
+          echo "✅ Version matches: $TAG"
+        fi

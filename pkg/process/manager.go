@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/devports/devpt/pkg/models"
@@ -60,10 +59,8 @@ func (m *Manager) Start(service *models.ManagedService) (int, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = service.CWD
 
-	// Set up process group to manage all child processes
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
+	// Set up process group to manage all child processes (platform-specific)
+	setProcessGroup(cmd)
 
 	// Redirect output to log file
 	cmd.Stdout = logFile
@@ -88,34 +85,33 @@ func (m *Manager) Stop(pid int, timeout time.Duration) error {
 
 	// First attempt graceful termination. For non-child processes we cannot use Wait(),
 	// so we send signals and poll for liveness.
-	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil {
-			return fmt.Errorf("failed to send SIGTERM: %w", err)
+	if err := terminateProcess(pid); err != nil {
+		if err := terminateProcessFallback(pid); err != nil {
+			return fmt.Errorf("failed to send termination signal: %w", err)
 		}
 	}
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if !m.isAlive(pid) {
+		if !isProcessAlive(pid) {
 			return nil
 		}
 		time.Sleep(120 * time.Millisecond)
 	}
 
 	// Escalate to hard kill.
-	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
+	if err := killProcess(pid); err != nil {
+		_ = killProcessFallback(pid)
 	}
 	time.Sleep(200 * time.Millisecond)
-	if m.isAlive(pid) {
+	if isProcessAlive(pid) {
 		return ErrNeedSudo
 	}
 	return nil
 }
 
 func (m *Manager) isAlive(pid int) bool {
-	err := syscall.Kill(pid, syscall.Signal(0))
-	if err != nil {
+	if !isProcessAlive(pid) {
 		return false
 	}
 	if st, stateErr := m.processState(pid); stateErr == nil {

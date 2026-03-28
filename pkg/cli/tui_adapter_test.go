@@ -76,7 +76,8 @@ func TestTUIAdapterRestartCmd_SuppressesCLIProgressOutput(t *testing.T) {
 		t.Fatalf("expected restart to update PID, still %d", *svc.LastPID)
 	}
 
-	if err := app.processManager.Stop(*svc.LastPID, 2*time.Second); err != nil {
+	// Best-effort cleanup; ignore ErrNeedSudo on CI/protected environments
+	if err := app.processManager.Stop(*svc.LastPID, 2*time.Second); err != nil && err != process.ErrNeedSudo {
 		t.Fatalf("cleanup stop: %v", err)
 	}
 }

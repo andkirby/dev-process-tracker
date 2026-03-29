@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+- Added a Shift+S sort direction toggle in the TUI so sort order can be reversed without changing the active column
+- Fixed managed service PID validation so stop and restart only act on processes that still match the registered service
+- Fixed cross-platform builds by separating Unix and Windows process control paths
+
 ## 0.2.1
 
 - Added table sorting controls with mouse support and reverse sort in the TUI

@@ -91,46 +91,49 @@ func (a *App) discoverServers() ([]*models.ServerInfo, error) {
 		})
 	}
 
+	type managedIdentity struct {
+		cwd  string
+		root string
+	}
+
 	managedServices := a.registry.ListServices()
 	portOwners := make(map[int][]*models.ManagedService)
+	rootOwners := make(map[string]int)
+	cwdOwners := make(map[string]int)
+	identities := make(map[*models.ManagedService]managedIdentity, len(managedServices))
 	for _, svc := range managedServices {
+		svcCWD := normalizePath(svc.CWD)
+		svcRoot := normalizePath(a.resolver.FindProjectRoot(svc.CWD))
+		identities[svc] = managedIdentity{
+			cwd:  svcCWD,
+			root: svcRoot,
+		}
+		if svcCWD != "" {
+			cwdOwners[svcCWD]++
+		}
+		if svcRoot != "" {
+			rootOwners[svcRoot]++
+		}
 		for _, port := range svc.Ports {
 			portOwners[port] = append(portOwners[port], svc)
 		}
 	}
 	for _, svc := range managedServices {
 		found := false
-		svcCWD := normalizePath(svc.CWD)
-		svcRoot := normalizePath(a.resolver.FindProjectRoot(svc.CWD))
+		identity := identities[svc]
+		svcCWD := identity.cwd
+		svcRoot := identity.root
 
-		// Prefer PID, then project root/CWD, then port (only if unique).
-		if svc.LastPID != nil && *svc.LastPID > 0 {
-			for _, server := range servers {
-				if server.ProcessRecord != nil && server.ProcessRecord.PID == *svc.LastPID {
-					server.ManagedService = svc
-					found = true
-					break
-				}
+		for _, server := range servers {
+			if server.ProcessRecord == nil || server.ManagedService != nil {
+				continue
 			}
-		}
-
-		if !found {
-			for _, server := range servers {
-				if server.ProcessRecord == nil || server.ManagedService != nil {
-					continue
-				}
-				procCWD := normalizePath(server.ProcessRecord.CWD)
-				procRoot := normalizePath(server.ProcessRecord.ProjectRoot)
-				if svcRoot != "" && procRoot != "" && svcRoot == procRoot {
-					server.ManagedService = svc
-					found = true
-					break
-				}
-				if svcCWD != "" && procCWD != "" && svcCWD == procCWD {
-					server.ManagedService = svc
-					found = true
-					break
-				}
+			procCWD := normalizePath(server.ProcessRecord.CWD)
+			procRoot := normalizePath(server.ProcessRecord.ProjectRoot)
+			if canMatchByPath(svcRoot, svcCWD, procRoot, procCWD, rootOwners, cwdOwners) {
+				server.ManagedService = svc
+				found = true
+				break
 			}
 		}
 
@@ -160,21 +163,19 @@ func (a *App) discoverServers() ([]*models.ServerInfo, error) {
 			}
 		}
 
-		if !found && svc.LastPID != nil && *svc.LastPID > 0 && a.processManager.IsRunning(*svc.LastPID) {
-			servers = append(servers, &models.ServerInfo{
-				ManagedService: svc,
-				ProcessRecord: &models.ProcessRecord{
-					PID:         *svc.LastPID,
-					Command:     svc.Command,
-					CWD:         svc.CWD,
-					ProjectRoot: svcRoot,
-					Port:        0,
-					Protocol:    "tcp",
-				},
-				Source: models.SourceManaged,
-				Status: "running",
-			})
-			found = true
+		if !found && svc.LastPID != nil && *svc.LastPID > 0 {
+			for _, server := range servers {
+				if server.ProcessRecord == nil || server.ManagedService != nil || server.ProcessRecord.PID != *svc.LastPID {
+					continue
+				}
+				procCWD := normalizePath(server.ProcessRecord.CWD)
+				procRoot := normalizePath(server.ProcessRecord.ProjectRoot)
+				if serviceMatchesProcess(svc, server.ProcessRecord, svcRoot, procRoot, procCWD) {
+					server.ManagedService = svc
+					found = true
+					break
+				}
+			}
 		}
 
 		if !found {
@@ -265,6 +266,36 @@ func normalizePath(p string) string {
 	p = strings.TrimSpace(p)
 	p = strings.TrimRight(p, "/")
 	return p
+}
+
+func canMatchByPath(svcRoot, svcCWD, procRoot, procCWD string, rootOwners, cwdOwners map[string]int) bool {
+	if svcRoot != "" && procRoot != "" && svcRoot == procRoot && rootOwners[svcRoot] == 1 {
+		return true
+	}
+	if svcCWD != "" && procCWD != "" && svcCWD == procCWD && cwdOwners[svcCWD] == 1 {
+		return true
+	}
+	return false
+}
+
+func serviceMatchesProcess(svc *models.ManagedService, proc *models.ProcessRecord, svcRoot, procRoot, procCWD string) bool {
+	if svc == nil || proc == nil {
+		return false
+	}
+
+	svcCWD := normalizePath(svc.CWD)
+	if svcCWD != "" && procCWD != "" && svcCWD == procCWD {
+		return true
+	}
+	if svcRoot != "" && procRoot != "" && svcRoot == procRoot {
+		return true
+	}
+	for _, port := range svc.Ports {
+		if port > 0 && proc.Port == port {
+			return true
+		}
+	}
+	return false
 }
 
 func warnLegacyManagedCommands(reg *registry.Registry, out io.Writer) {

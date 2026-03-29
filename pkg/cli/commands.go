@@ -139,32 +139,13 @@ func (a *App) StopCmd(identifier string) error {
 	// Check if identifier is a service name
 	if svc := a.registry.GetService(identifier); svc != nil {
 		targetServiceName = svc.Name
-		if svc.LastPID != nil {
-			targetPID = *svc.LastPID
-		} else {
-			servers, err := a.discoverServers()
-			if err != nil {
-				return err
-			}
-			for _, srv := range servers {
-				if srv.ManagedService != nil && srv.ManagedService.Name == identifier && srv.ProcessRecord != nil {
-					targetPID = srv.ProcessRecord.PID
-					break
-				}
-			}
-			if targetPID == 0 && len(svc.Ports) > 0 {
-				for _, port := range svc.Ports {
-					for _, srv := range servers {
-						if srv.ProcessRecord != nil && srv.ProcessRecord.Port == port {
-							targetPID = srv.ProcessRecord.PID
-							break
-						}
-					}
-					if targetPID != 0 {
-						break
-					}
-				}
-			}
+		servers, err := a.discoverServers()
+		if err != nil {
+			return err
+		}
+		targetPID = managedServicePID(servers, svc.Name)
+		if targetPID == 0 && svc.LastPID != nil && *svc.LastPID > 0 && a.processManager.IsRunning(*svc.LastPID) {
+			return fmt.Errorf("cannot safely determine PID for service %q; stored PID is no longer validated against a live managed process", identifier)
 		}
 	} else {
 		// Try parsing as port number
@@ -232,9 +213,11 @@ func (a *App) RestartCmd(name string) error {
 	}
 
 	// Stop if running
-	if svc.LastPID != nil && *svc.LastPID > 0 {
+	if pid, err := a.validatedManagedPID(svc); err != nil {
+		return err
+	} else if pid > 0 {
 		fmt.Printf("Stopping service %q...\n", name)
-		if err := a.processManager.Stop(*svc.LastPID, 5000000000); err != nil { // 5 second timeout
+		if err := a.processManager.Stop(pid, 5000000000); err != nil { // 5 second timeout
 			fmt.Fprintf(os.Stderr, "Warning: failed to stop service: %v\n", err)
 		}
 	}
@@ -281,6 +264,36 @@ func isProcessFinishedErr(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "process already finished") || strings.Contains(msg, "no such process")
+}
+
+func managedServicePID(servers []*models.ServerInfo, serviceName string) int {
+	for _, srv := range servers {
+		if srv == nil || srv.ManagedService == nil || srv.ProcessRecord == nil {
+			continue
+		}
+		if srv.ManagedService.Name == serviceName {
+			return srv.ProcessRecord.PID
+		}
+	}
+	return 0
+}
+
+func (a *App) validatedManagedPID(svc *models.ManagedService) (int, error) {
+	if svc == nil {
+		return 0, nil
+	}
+	servers, err := a.discoverServers()
+	if err != nil {
+		return 0, err
+	}
+	pid := managedServicePID(servers, svc.Name)
+	if pid != 0 {
+		return pid, nil
+	}
+	if svc.LastPID != nil && *svc.LastPID > 0 && a.processManager.IsRunning(*svc.LastPID) {
+		return 0, fmt.Errorf("cannot safely determine PID for service %q; stored PID is no longer validated against a live managed process", svc.Name)
+	}
+	return 0, nil
 }
 
 // StatusCmd shows detailed info for a specific server

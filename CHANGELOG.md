@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+- Added a managed-services split view in the TUI so selection and navigation stay clear when browsing running and registered services
+- Fixed TUI selection behavior so focus, row targeting, and split-pane navigation stay aligned while moving between running and managed services
+
 ## 0.2.2
 
 - Added a Shift+S sort direction toggle in the TUI so sort order can be reversed without changing the active column

@@ -197,7 +197,7 @@ func TestManagedSplitView_SelectedManagedRowHighlightsWholeLine(t *testing.T) {
 	_ = model.View()
 
 	var selectedLine string
-	for _, line := range strings.Split(model.table.managedVP.View(), "\n") {
+	for _, line := range strings.Split(model.table.managedListVP.View(), "\n") {
 		if strings.Contains(ansi.Strip(line), "docs-preview [stopped]") {
 			selectedLine = line
 			break

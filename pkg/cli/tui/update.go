@@ -66,6 +66,13 @@ func (m *topModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.mode = viewModeTable
 			m.cmdInput = ""
 			return m, nil
+		case "ctrl+c":
+			m.mode = viewModeTable
+			m.cmdInput = ""
+			return m, nil
+		case "ctrl+u":
+			m.cmdInput = ""
+			return m, nil
 		case "enter":
 			m.cmdStatus = m.runCommand(strings.TrimSpace(m.cmdInput))
 			m.cmdInput = ""
@@ -368,7 +375,7 @@ func (m *topModel) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		m.tableFollowSelection = false
 		viewportY := mouse.Y - m.tableTopLines(m.width) + 1
-		cmd := m.table.updateViewportForTableY(viewportY, msg)
+		cmd := m.table.updateViewportForTableY(viewportY, mouse.X, msg)
 		return m, cmd
 	}
 	if m.mode == viewModeLogs {

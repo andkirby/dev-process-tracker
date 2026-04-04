@@ -16,17 +16,21 @@ import (
 )
 
 type processTable struct {
-	runningVP viewport.Model
-	managedVP viewport.Model
+	runningVP        viewport.Model
+	managedListVP    viewport.Model
+	managedDetailsVP viewport.Model
 
 	lastRunningHeight int
 	lastManagedHeight int
+	lastListWidth     int
+	lastDetailsWidth  int
 }
 
 func newProcessTable() processTable {
 	return processTable{
-		runningVP: viewport.New(),
-		managedVP: viewport.New(),
+		runningVP:        viewport.New(),
+		managedListVP:    viewport.New(),
+		managedDetailsVP: viewport.New(),
 	}
 }
 
@@ -44,26 +48,39 @@ func (t *processTable) Render(m *topModel, width int) string {
 	totalHeight := t.heightFor(m.height, topLines, bottomLines)
 	runningContent := m.renderRunningTable(width)
 	managedHeader := m.renderManagedHeader(width)
-	managedContent := m.renderManagedSection(width)
+	listContent := m.renderManagedList(width / 2)
+	detailsContent := m.renderManagedDetails(width - width/2)
 	runningLines := 1 + strings.Count(runningContent, "\n")
-	managedLines := 1 + strings.Count(managedContent, "\n")
+	listLines := 1 + strings.Count(listContent, "\n")
+	detailsLines := 1 + strings.Count(detailsContent, "\n")
+	managedLines := max(listLines, detailsLines)
 	runningHeight, managedHeight := t.sectionHeights(totalHeight, runningLines, managedLines)
 
 	t.lastRunningHeight = runningHeight
 	t.lastManagedHeight = managedHeight
+	t.lastListWidth = width / 2
+	t.lastDetailsWidth = width - width/2
 
 	t.runningVP.SetWidth(width)
 	t.runningVP.SetHeight(runningHeight)
 	t.runningVP.SetContent(runningContent)
 
-	t.managedVP.SetWidth(width)
-	t.managedVP.SetHeight(managedHeight)
-	t.managedVP.SetContent(managedContent)
+	t.managedListVP.SetWidth(width / 2)
+	t.managedListVP.SetHeight(managedHeight)
+	t.managedListVP.SetContent(listContent)
+
+	t.managedDetailsVP.SetWidth(width - width/2)
+	t.managedDetailsVP.SetHeight(managedHeight)
+	t.managedDetailsVP.SetContent(detailsContent)
+
 	if m.tableFollowSelection {
 		t.scrollToSelection(m)
 	}
 
-	return t.runningVP.View() + "\n" + managedHeader + "\n" + t.managedVP.View()
+	listView := t.managedListVP.View()
+	detailsView := t.managedDetailsVP.View()
+
+	return t.runningVP.View() + "\n" + managedHeader + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, listView, detailsView)
 }
 
 func (m *topModel) tableTopLines(width int) int {
@@ -182,7 +199,7 @@ func (t *processTable) scrollToSelection(m *topModel) {
 		t.scrollViewportToLine(&t.runningVP, selectedLine)
 	} else if m.focus == focusManaged && m.managedSel >= 0 && m.managedSel < len(managed) {
 		selectedLine := m.managedSel
-		t.scrollViewportToLine(&t.managedVP, selectedLine)
+		t.scrollViewportToLine(&t.managedListVP, selectedLine)
 	}
 }
 
@@ -306,7 +323,7 @@ func (m *topModel) renderRunningTable(width int) string {
 
 		truncatedCmd := cmd
 		if runewidth.StringWidth(cmd) > cmdW {
-			truncatedCmd = runewidth.Truncate(cmd, cmdW-3, "...")
+			truncatedCmd = runewidth.Truncate(cmd, cmdW, "...")
 		}
 
 		line := fmt.Sprintf("%s%s%s%s%s%s%s%s%s%s%s",
@@ -318,6 +335,16 @@ func (m *topModel) renderRunningTable(width int) string {
 			fixedCell(icon, healthW),
 		)
 		lines = append(lines, fitLine(line, width))
+	}
+
+	// Inject OSC 8 hyperlinks into port cells after fitLine (width calc done).
+	for i, srv := range visible {
+		if srv.ProcessRecord != nil && srv.ProcessRecord.Port > 0 {
+			port := fmt.Sprintf("%d", srv.ProcessRecord.Port)
+			old := fixedCell(port, portW)
+			linked := osc8Link(port, "http://localhost:"+port) + strings.Repeat(" ", portW-len(port))
+			lines[rowIndices[i]] = strings.Replace(lines[rowIndices[i]], old, linked, 1)
+		}
 	}
 
 	// Apply visual group selection highlight when group toggle is active (before selection highlight)
@@ -368,30 +395,14 @@ func (m *topModel) renderManagedHeader(width int) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render(fitLine(header, width))
 }
 
-func (m *topModel) renderManagedSection(width int) string {
+// renderManagedSection is no longer used — list and details are rendered into
+// independent viewports (managedListVP, managedDetailsVP) in Render().
+
+func (m *topModel) renderManagedList(width int) string {
 	managed := m.managedServices()
 	if len(managed) == 0 {
 		return fitLine(`No managed services yet. Use ^A then: add myapp /path/to/app "npm run dev" 3000`, width)
 	}
-
-	// Split width 50|50
-	listWidth := width / 2
-	detailsWidth := width - listWidth
-	if listWidth < 1 {
-		listWidth = 1
-	}
-	if detailsWidth < 1 {
-		detailsWidth = 1
-	}
-
-	listPane := m.renderManagedList(listWidth)
-	detailsPane := m.renderManagedDetails(detailsWidth)
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, listPane, detailsPane)
-}
-
-func (m *topModel) renderManagedList(width int) string {
-	managed := m.managedServices()
 
 	portOwners := make(map[int]int)
 	for _, svc := range managed {
@@ -520,7 +531,7 @@ func (m *topModel) renderManagedDetails(width int) string {
 func (t *processTable) updateFocusedViewport(focus viewFocus, msg tea.Msg) tea.Cmd {
 	if focus == focusManaged {
 		var cmd tea.Cmd
-		t.managedVP, cmd = t.managedVP.Update(msg)
+		t.managedListVP, cmd = t.managedListVP.Update(msg)
 		return cmd
 	}
 	var cmd tea.Cmd
@@ -528,7 +539,7 @@ func (t *processTable) updateFocusedViewport(focus viewFocus, msg tea.Msg) tea.C
 	return cmd
 }
 
-func (t *processTable) updateViewportForTableY(viewportY int, msg tea.Msg) tea.Cmd {
+func (t *processTable) updateViewportForTableY(viewportY int, viewportX int, msg tea.Msg) tea.Cmd {
 	if viewportY < 0 {
 		return nil
 	}
@@ -543,8 +554,14 @@ func (t *processTable) updateViewportForTableY(viewportY int, msg tea.Msg) tea.C
 
 	localManagedY := viewportY - t.lastRunningHeight - 1
 	if localManagedY >= 0 && localManagedY < t.lastManagedHeight {
+		// Route scroll to list or details viewport based on X position
+		if viewportX < t.lastListWidth {
+			var cmd tea.Cmd
+			t.managedListVP, cmd = t.managedListVP.Update(msg)
+			return cmd
+		}
 		var cmd tea.Cmd
-		t.managedVP, cmd = t.managedVP.Update(msg)
+		t.managedDetailsVP, cmd = t.managedDetailsVP.Update(msg)
 		return cmd
 	}
 	return nil
@@ -555,11 +572,22 @@ func (t *processTable) runningYOffset() int {
 }
 
 func (t *processTable) managedYOffset() int {
-	return t.managedVP.YOffset()
+	return t.managedListVP.YOffset()
 }
 
 func pad(n int) string {
 	return strings.Repeat(" ", n)
+}
+
+// portCell renders a port value as a fixed-width cell.
+// When the port is a number, it wraps it in an OSC 8 hyperlink to http://localhost:<port>.
+// When the port is "-" (no port), it renders as plain text.
+// Uses ansi.StringWidth for correct width calculation with escape sequences.
+func portCell(port string, width int) string {
+	if port == "-" {
+		return fixedCell(port, width)
+	}
+	return fixedHyperlinkCell(port, "http://localhost:"+port, width)
 }
 
 func (m topModel) displayNames(servers []*models.ServerInfo) []string {

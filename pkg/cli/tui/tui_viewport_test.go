@@ -323,7 +323,7 @@ func findRunningRowClickY(model *topModel, needle string) int {
 
 func findManagedRowClickY(model *topModel, needle string) int {
 	_ = model.View()
-	viewportLines := strings.Split(model.table.managedVP.View(), "\n")
+	viewportLines := strings.Split(model.table.managedListVP.View(), "\n")
 	for i, line := range viewportLines {
 		if strings.Contains(line, needle) {
 			return model.tableTopLines(model.width) + model.table.lastRunningHeight + i
@@ -423,7 +423,7 @@ func TestTableMouseClickSelection(t *testing.T) {
 		}
 
 		_ = model.View()
-		viewportLines := strings.Split(model.table.managedVP.View(), "\n")
+		viewportLines := strings.Split(model.table.managedListVP.View(), "\n")
 		clickY := -1
 		for i, line := range viewportLines {
 			if strings.Contains(line, "beta [stopped]") {
@@ -548,7 +548,7 @@ func TestTableMouseClickSelection(t *testing.T) {
 		}
 
 		_ = model.View()
-		initialManagedOffset := model.table.managedVP.YOffset()
+		initialManagedOffset := model.table.managedListVP.YOffset()
 		runningOffset := model.table.runningVP.YOffset()
 		mouseY := 2 + model.table.lastRunningHeight + 2
 
@@ -560,7 +560,7 @@ func TestTableMouseClickSelection(t *testing.T) {
 		assert.False(t, updatedModel.tableFollowSelection)
 
 		_ = updatedModel.View()
-		assert.Greater(t, updatedModel.table.managedVP.YOffset(), initialManagedOffset)
+		assert.Greater(t, updatedModel.table.managedListVP.YOffset(), initialManagedOffset)
 		assert.Equal(t, runningOffset, updatedModel.table.runningVP.YOffset())
 	})
 
@@ -591,7 +591,7 @@ func TestTableMouseClickSelection(t *testing.T) {
 
 		_ = model.View()
 		initialRunningOffset := model.table.runningVP.YOffset()
-		managedOffset := model.table.managedVP.YOffset()
+		managedOffset := model.table.managedListVP.YOffset()
 		mouseY := 4
 
 		newModel, cmd := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, X: 10, Y: mouseY})
@@ -603,6 +603,6 @@ func TestTableMouseClickSelection(t *testing.T) {
 
 		_ = updatedModel.View()
 		assert.Greater(t, updatedModel.table.runningVP.YOffset(), initialRunningOffset)
-		assert.Equal(t, managedOffset, updatedModel.table.managedVP.YOffset())
+		assert.Equal(t, managedOffset, updatedModel.table.managedListVP.YOffset())
 	})
 }

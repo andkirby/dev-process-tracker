@@ -10,114 +10,114 @@ import (
 	"sync"
 	"time"
 
-"github.com/devports/devpt/pkg/models"
+	"github.com/devports/devpt/pkg/models"
 )
 
 // ProcessScanner discovers listening ports using macOS tools
 type ProcessScanner struct {
-cwdCache map[int]string
-mu       sync.RWMutex
+	cwdCache map[int]string
+	mu       sync.RWMutex
 }
 
 // NewProcessScanner creates a new scanner instance
 func NewProcessScanner() *ProcessScanner {
-return &ProcessScanner{
-cwdCache: make(map[int]string),
-}
+	return &ProcessScanner{
+		cwdCache: make(map[int]string),
+	}
 }
 
 // ScanListeningPorts discovers all TCP listening ports
 func (ps *ProcessScanner) ScanListeningPorts() ([]*models.ProcessRecord, error) {
-cmd := exec.Command("lsof", "-nP", "-iTCP", "-sTCP:LISTEN")
-output, err := cmd.Output()
-if err != nil {
-return nil, fmt.Errorf("failed to run lsof: %w", err)
-}
+	cmd := exec.Command("lsof", "-nP", "-iTCP", "-sTCP:LISTEN")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run lsof: %w", err)
+	}
 
-records, err := ps.parseLsofOutput(string(output))
-if err != nil {
-return records, err
-}
+	records, err := ps.parseLsofOutput(string(output))
+	if err != nil {
+		return records, err
+	}
 
-// Enrich records with command information
-ps.enrichWithCommands(records)
-return records, nil
+	// Enrich records with command information
+	ps.enrichWithCommands(records)
+	return records, nil
 }
 
 // parseLsofOutput parses lsof output into ProcessRecords
 func (ps *ProcessScanner) parseLsofOutput(output string) ([]*models.ProcessRecord, error) {
-scanner := bufio.NewScanner(strings.NewReader(output))
-records := make([]*models.ProcessRecord, 0)
-seen := make(map[string]bool)
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	records := make([]*models.ProcessRecord, 0)
+	seen := make(map[string]bool)
 
-// Skip header
-if !scanner.Scan() {
-return records, nil
-}
+	// Skip header
+	if !scanner.Scan() {
+		return records, nil
+	}
 
-for scanner.Scan() {
-line := scanner.Text()
-record, err := ps.parseLsofLine(line)
-if err != nil {
-continue
-}
+	for scanner.Scan() {
+		line := scanner.Text()
+		record, err := ps.parseLsofLine(line)
+		if err != nil {
+			continue
+		}
 
-if record != nil {
-key := fmt.Sprintf("%d:%d", record.PID, record.Port)
-if !seen[key] {
-seen[key] = true
-records = append(records, record)
-}
-}
-}
+		if record != nil {
+			key := fmt.Sprintf("%d:%d", record.PID, record.Port)
+			if !seen[key] {
+				seen[key] = true
+				records = append(records, record)
+			}
+		}
+	}
 
-return records, nil
+	return records, nil
 }
 
 // parseLsofLine parses a single lsof output line
 func (ps *ProcessScanner) parseLsofLine(line string) (*models.ProcessRecord, error) {
-fields := strings.Fields(line)
-if len(fields) < 9 {
-return nil, fmt.Errorf("insufficient fields")
-}
+	fields := strings.Fields(line)
+	if len(fields) < 9 {
+		return nil, fmt.Errorf("insufficient fields")
+	}
 
-command := fields[0]
-pidStr := fields[1]
-nameField := fields[8]
+	command := fields[0]
+	pidStr := fields[1]
+	nameField := fields[8]
 
-pid, err := strconv.Atoi(pidStr)
-if err != nil {
-return nil, fmt.Errorf("invalid pid")
-}
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid pid")
+	}
 
-port, err := extractPort(nameField)
-if err != nil {
-return nil, fmt.Errorf("no port")
-}
+	port, err := extractPort(nameField)
+	if err != nil {
+		return nil, fmt.Errorf("no port")
+	}
 
-return &models.ProcessRecord{
-PID:      pid,
-Port:     port,
-Command:  command, // Preserve lsof command name as fallback if ps lookup fails
-CWD:      "", // Skip for now - was causing hangs
-Protocol: "tcp",
-}, nil
+	return &models.ProcessRecord{
+		PID:      pid,
+		Port:     port,
+		Command:  command, // Preserve lsof command name as fallback if ps lookup fails
+		CWD:      "",      // Skip for now - was causing hangs
+		Protocol: "tcp",
+	}, nil
 }
 
 // extractPort extracts port from NAME field
 func extractPort(name string) (int, error) {
-parts := strings.Split(name, ":")
-if len(parts) < 2 {
-return 0, fmt.Errorf("no port")
-}
+	parts := strings.Split(name, ":")
+	if len(parts) < 2 {
+		return 0, fmt.Errorf("no port")
+	}
 
-portStr := parts[len(parts)-1]
-port, err := strconv.Atoi(portStr)
-if err != nil {
-return 0, fmt.Errorf("invalid port")
-}
+	portStr := parts[len(parts)-1]
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid port")
+	}
 
-return port, nil
+	return port, nil
 }
 
 // enrichWithCommands fetches command information for each PID

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -596,6 +597,138 @@ func findLineContaining(lines []string, pattern string) string {
 		}
 	}
 	return ""
+}
+
+func TestView_CommandColumnTruncation(t *testing.T) {
+	// Regression test: command column should use full cmdW for content.
+	// Old bug: runewidth.Truncate(cmd, cmdW-3, "...") produced a cmdW-3 wide string,
+	// then fixedCell padded with 3 dead spaces. The "..." was already counted in the
+	// Truncate output, so cmdW-3 wasted 3 chars of visible command path.
+	// Fix: runewidth.Truncate(cmd, cmdW, "...") uses the full width budget.
+	longCmd := "/Users/kirby/home/yt-offline/backend/node /very/long/path/to/some/javascript/server/file/that/needs/truncation/server.js"
+
+	for _, terminalWidth := range []int{80, 100, 120} {
+		t.Run(fmt.Sprintf("width_%d", terminalWidth), func(t *testing.T) {
+			model := newTopModel(&fakeAppDeps{
+				servers: []*models.ServerInfo{
+					{
+						ProcessRecord: &models.ProcessRecord{
+							PID:         33489,
+							Port:        9055,
+							Command:     longCmd,
+							CWD:         "/Users/kirby/home/yt-offline/backend",
+							ProjectRoot: "/Users/kirby/home/yt-offline/backend",
+						},
+					Status: "running",
+					Source: models.SourceManual,
+				},
+			},
+		})
+		model.width = terminalWidth
+		model.height = 24
+		model.mode = viewModeTable
+		model.refresh()
+
+		output := model.View().Content
+		lines := strings.Split(output, "\n")
+
+		// Find a data row containing the command path (use stripped output for matching)
+		var dataLineStripped string
+		for _, l := range lines {
+			s := stripANSI(l)
+			if strings.Contains(s, "yt-offline") || strings.Contains(s, "Users/kirby") {
+				dataLineStripped = s
+				break
+			}
+		}
+		assert.NotEmpty(t, dataLineStripped, "should find a row with the command path")
+
+		// Calculate expected cmdW
+		nameW, portW, pidW, projectW, healthW := 14, 6, 7, 14, 7
+		sep := 2
+		used := nameW + sep + portW + sep + pidW + sep + projectW + sep + healthW + sep
+		cmdW := terminalWidth - used
+		if cmdW < 12 {
+			cmdW = 12
+		}
+
+		// Only test truncation cases (command longer than column)
+		if cmdW >= len(longCmd) {
+			return
+		}
+
+		// Extract the command cell from the stripped (no-ANSI) line
+		// Command cell starts after: name(14) + sep(2) + port(6) + sep(2) + pid(7) + sep(2) + project(14) + sep(2) = 49
+		cmdStart := nameW + sep + portW + sep + pidW + sep + projectW + sep
+
+		// dataLineStripped already has ANSI stripped
+		runes := []rune(dataLineStripped)
+		if cmdStart+cmdW > len(runes) {
+			// Emoji may cause rune/width mismatch; extract approximate
+			return
+		}
+		cmdCell := string(runes[cmdStart : cmdStart+cmdW])
+
+		// The command cell should end with "..." from truncation, not spaces
+		assert.True(t, strings.HasSuffix(cmdCell, "..."),
+			"command cell should end with ..., got: %q", cmdCell)
+
+		// Old bug symptom: cell ends with "...   " (ellipsis + dead space padding)
+		assert.False(t, strings.Contains(cmdCell, "...   "),
+			"command cell should NOT have dead space after ... (old cmdW-3 bug), got: %q", cmdCell)
+
+		// Content before "..." should be longer than the old bug would allow
+		// Old bug: cmdW-3 total width means only cmdW-6 chars of actual path
+		// Fix: cmdW total width means cmdW-3 chars of actual path
+		pathPart := strings.TrimSuffix(cmdCell, "...")
+		assert.Greater(t, len(pathPart), 0, "should have path content before ...")
+
+		// Verify we're showing at least cmdW-3 chars of content (the maximum possible)
+		assert.GreaterOrEqual(t, len(pathPart), cmdW-3,
+			"should use nearly full cmdW for path content, got %d chars in %q", len(pathPart), cmdCell)
+	})
+	}
+}
+
+// stripANSI removes ANSI escape sequences and OSC hyperlinks from a string.
+func stripANSI(s string) string {
+	var result strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == '\x1b' {
+			// Skip escape sequence
+			i++
+			if i < len(s) && s[i] == '[' {
+				i++
+				for i < len(s) {
+					if (s[i] >= '0' && s[i] <= '9') || s[i] == ';' || s[i] == '?' {
+						i++
+					} else {
+						i++
+						break
+					}
+				}
+			} else if i < len(s) && s[i] == ']' {
+				// OSC sequence: \x1b]...\x07 or \x1b]...\x1b\\
+				i++
+				for i < len(s) {
+					if s[i] == '\x07' {
+						i++
+						break
+					}
+					if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '\\' {
+						i += 2
+						break
+					}
+					i++
+				}
+			}
+		} else {
+			result.WriteByte(s[i])
+			i++
+		}
+	}
+	return result.String()
 }
 
 func calculateVisibleWidth(s string) int {

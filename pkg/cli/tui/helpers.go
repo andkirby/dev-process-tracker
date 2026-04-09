@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 
 	"github.com/devports/devpt/pkg/models"
@@ -15,10 +16,35 @@ func fixedCell(s string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	if runewidth.StringWidth(s) > width {
+	w := runewidth.StringWidth(s)
+	if w > width {
 		return runewidth.Truncate(s, width, "")
 	}
-	return s + strings.Repeat(" ", width-runewidth.StringWidth(s))
+	return s + strings.Repeat(" ", width-w)
+}
+
+// osc8Link wraps text in an OSC 8 hyperlink escape sequence.
+// Terminals that support OSC 8 will make the text clickable, opening the given URL.
+// Unsupported terminals silently display the plain text.
+func osc8Link(text, url string) string {
+	return ansi.SetHyperlink(url) + text + ansi.ResetHyperlink()
+}
+
+// fixedHyperlinkCell wraps text in an OSC 8 hyperlink and pads it to the given
+// visible width. Uses ansi.StringWidth which correctly strips escape sequences
+// for width calculation (unlike runewidth.StringWidth which does not).
+func fixedHyperlinkCell(text, url string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	linked := osc8Link(text, url)
+	visibleWidth := ansi.StringWidth(linked)
+	if visibleWidth >= width {
+		// Text exceeds cell width — truncate the plain text (strip escapes for display)
+		truncated := ansi.Truncate(text, width, "")
+		return truncated + strings.Repeat(" ", width-ansi.StringWidth(truncated))
+	}
+	return linked + strings.Repeat(" ", width-visibleWidth)
 }
 
 func wrapRunes(s string, width int) []string {
@@ -124,7 +150,7 @@ func fitLine(line string, width int) string {
 		return line
 	}
 	lineWidth := runewidth.StringWidth(line)
-	if lineWidth >= width {
+	if lineWidth > width {
 		if width <= 3 {
 			return runewidth.Truncate(line, width, "")
 		}
@@ -432,7 +458,7 @@ func (m *topModel) handleTableMouseClick(msg tea.MouseMsg) (tea.Model, tea.Cmd) 
 			m.focus = focusRunning
 			m.selected = newSelected
 			m.tableFollowSelection = true
-		m.groupHighlightNamespace = nil
+			m.groupHighlightNamespace = nil
 			m.lastInput = time.Now()
 		}
 		return m, nil

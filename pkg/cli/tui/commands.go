@@ -547,8 +547,8 @@ func (m *topModel) executeGroupConfirm(c confirmState) {
 					results = append(results, fmt.Sprintf("Started %q", name))
 					m.starting[name] = time.Now()
 				}
+			}
 		}
-	}
 		m.cmdStatus = strings.Join(results, "; ")
 
 	case confirmGroupStart:

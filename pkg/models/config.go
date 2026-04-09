@@ -7,9 +7,9 @@ import (
 
 // ConfigPaths provides paths for config and data directories
 type ConfigPaths struct {
-	ConfigDir string
+	ConfigDir    string
 	RegistryFile string
-	LogsDir   string
+	LogsDir      string
 }
 
 // GetConfigPaths returns paths for devpt configuration

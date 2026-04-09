@@ -3,32 +3,32 @@ package tui
 import "charm.land/bubbles/v2/key"
 
 type keyMap struct {
-	Up          key.Binding
-	Down        key.Binding
-	Tab         key.Binding
-	Enter       key.Binding
-	Search      key.Binding
-	ClearFilter key.Binding
-	Sort        key.Binding
-	SortReverse key.Binding
-	Health      key.Binding
-	Help        key.Binding
-	Add         key.Binding
-	Restart     key.Binding
-	Stop        key.Binding
-	Remove      key.Binding
-	Debug       key.Binding
-	Back        key.Binding
-	Follow      key.Binding
-	NextMatch   key.Binding
-	PrevMatch   key.Binding
-	Confirm     key.Binding
-	Cancel      key.Binding
-	Quit        key.Binding
+	Up           key.Binding
+	Down         key.Binding
+	Tab          key.Binding
+	Enter        key.Binding
+	Search       key.Binding
+	ClearFilter  key.Binding
+	Sort         key.Binding
+	SortReverse  key.Binding
+	Health       key.Binding
+	Help         key.Binding
+	Add          key.Binding
+	Restart      key.Binding
+	Stop         key.Binding
+	Remove       key.Binding
+	Debug        key.Binding
+	Back         key.Binding
+	Follow       key.Binding
+	NextMatch    key.Binding
+	PrevMatch    key.Binding
+	Confirm      key.Binding
+	Cancel       key.Binding
+	Quit         key.Binding
 	GroupStop    key.Binding
 	GroupRestart key.Binding
 	GroupRemove  key.Binding
-	GroupToggle key.Binding
+	GroupToggle  key.Binding
 }
 
 func defaultKeyMap() keyMap {
@@ -138,7 +138,6 @@ func defaultKeyMap() keyMap {
 			key.WithKeys("g"),
 			key.WithHelp("g", "group mode"),
 		),
-
 	}
 }
 

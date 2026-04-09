@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/devports/devpt/pkg/models"
 	"github.com/stretchr/testify/assert"
 )
@@ -427,6 +427,7 @@ func TestGroupRestart(t *testing.T) {
 		assert.Contains(t, m.cmdStatus, "Started")
 	})
 }
+
 // ---------------------------------------------------------------------------
 // TEST-group-start
 // Covers: BR-1.6, C-1.1, Edge-1.6
@@ -1132,7 +1133,7 @@ func TestGroupToggleHighlight(t *testing.T) {
 
 	t.Run("no-op when no valid selection", func(t *testing.T) {
 		deps := &fakeAppDeps{
-			servers: []*models.ServerInfo{},
+			servers:  []*models.ServerInfo{},
 			services: []*models.ManagedService{},
 		}
 		m := newTopModel(deps)

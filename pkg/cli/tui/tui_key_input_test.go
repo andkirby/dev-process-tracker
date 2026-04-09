@@ -180,7 +180,6 @@ func TestShiftKeybindingsRegistered(t *testing.T) {
 		assert.True(t, key.Matches(tea.KeyPressMsg{Code: 'x', Mod: tea.ModShift}, m.keys.GroupRemove))
 	})
 
-
 	t.Run("group bindings do not match without shift modifier", func(t *testing.T) {
 		m := newTestModel()
 		assert.False(t, key.Matches(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}, m.keys.GroupStop))

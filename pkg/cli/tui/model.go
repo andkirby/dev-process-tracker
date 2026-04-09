@@ -47,14 +47,14 @@ const (
 )
 
 type confirmState struct {
-	kind          confirmKind
-	prompt        string
-	pid           int
-	name          string
-	serviceName   string
-	namespace     string
-	serviceNames  []string
-	pids          []int
+	kind         confirmKind
+	prompt       string
+	pid          int
+	name         string
+	serviceName  string
+	namespace    string
+	serviceNames []string
+	pids         []int
 }
 
 type modalState struct {
@@ -93,9 +93,9 @@ type topModel struct {
 	healthLast       time.Time
 	healthChk        *health.Checker
 
-	sortBy       sortMode
-	sortReverse  bool
-	lastSortBy   sortMode // track last sorted column for 3-state cycle
+	sortBy      sortMode
+	sortReverse bool
+	lastSortBy  sortMode // track last sorted column for 3-state cycle
 
 	starting map[string]time.Time
 	removed  map[string]*models.ManagedService
@@ -111,9 +111,9 @@ type topModel struct {
 	highlightIndex   int
 	highlightMatches []int
 
-	lastClickTime            time.Time
-	lastClickY               int
-	tableFollowSelection     bool
+	lastClickTime        time.Time
+	lastClickY           int
+	tableFollowSelection bool
 
 	// Toggle-based visual group selection (g key)
 	groupHighlightNamespace *string

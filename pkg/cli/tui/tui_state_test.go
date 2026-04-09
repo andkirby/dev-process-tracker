@@ -407,9 +407,9 @@ func TestColumnAtX(t *testing.T) {
 	model.width = 120
 
 	tests := []struct {
-		name      string
-		x         int
-		wantSort  sortMode
+		name     string
+		x        int
+		wantSort sortMode
 	}{
 		{"name column", 5, sortName},
 		{"port column", 18, sortPort},

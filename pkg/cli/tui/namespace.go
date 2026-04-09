@@ -7,27 +7,35 @@ import (
 	"github.com/devports/devpt/pkg/models"
 )
 
-var namespaceRegex = regexp.MustCompile(`^([a-zA-Z0-9]+)`)
+// namespaceRegex matches: leading non-alphanumeric chars + first alphanumeric sequence
+// Examples: "_offgrid-be" matches "_offgrid", "api-gateway" matches "api"
+var namespaceRegex = regexp.MustCompile(`^([^a-zA-Z0-9]*[a-zA-Z0-9]+)[^a-zA-Z0-9]`)
 
-// extractNamespace returns the first alphanumeric prefix of a service name,
-// after skipping any leading non-alphanumeric characters (e.g., _, ., -).
+// extractNamespace returns the namespace prefix of a service name,
+// including any leading special characters (e.g., _). The namespace is
+// everything from start up to the first separator (non-alphanumeric)
+// after the first alphanumeric character.
+// Examples:
+//   "_offgrid-api" → "_offgrid"
+//   "offgrid-be" → "offgrid"
+//   "api-gateway" → "api"
 // Returns "-" for empty, whitespace-only, or strings with no alphanumeric characters.
 func extractNamespace(name string) string {
 	if name == "" {
 		return "-"
 	}
-	// Skip leading non-alphanumeric characters
-	for i, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			// Found first alphanumeric character, extract prefix from here
-			matches := namespaceRegex.FindStringSubmatch(name[i:])
-			if len(matches) < 2 {
-				return "-"
+	// Try to match the pattern: [leading specials][alphanumerics][separator]
+	matches := namespaceRegex.FindStringSubmatch(name)
+	if len(matches) < 2 {
+		// No separator found, check if string has any alphanumerics at all
+		for _, r := range name {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+				return name // Entire string is namespace
 			}
-			return matches[1]
 		}
+		return "-" // No alphanumeric characters
 	}
-	return "-" // no alphanumeric characters found
+	return matches[1]
 }
 
 // groupForNamespace returns all visible servers matching the given namespace prefix.

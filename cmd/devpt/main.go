@@ -152,11 +152,11 @@ func handleLogs(app *cli.App, args []string) error {
 
 func handleStatus(app *cli.App, args []string) error {
 	if len(args) < 1 {
-		fmt.Println("Usage: devpt status <name|port>")
-		return fmt.Errorf("service name or port required")
+		fmt.Println("Usage: devpt status <name|port|pattern> [name|port|pattern...]")
+		return fmt.Errorf("service name, port, or pattern required")
 	}
 
-	return app.StatusCmd(args[0])
+	return app.StatusCmd(args)
 }
 
 func printUsage() {
@@ -184,7 +184,7 @@ name:port format:
 
 Inspect:
   devpt ls [--details]
-  devpt status <name|port>
+  devpt status <name|port|pattern> [name|port|pattern...]
 
 Meta:
   devpt help

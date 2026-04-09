@@ -619,32 +619,57 @@ func FormatBatchResultsWithPattern(results []BatchResult, pattern string) {
 	FormatBatchResults(results)
 }
 
-// StatusCmd shows detailed info for a specific server
-func (a *App) StatusCmd(identifier string) error {
+// StatusCmd shows detailed info for one or more servers.
+// Identifiers may be exact names, port numbers, or glob patterns (e.g. "offg*").
+// When multiple services match, status is shown for ALL of them.
+func (a *App) StatusCmd(identifiers []string) error {
 	servers, err := a.discoverServers()
 	if err != nil {
 		return err
 	}
 
-	var target *models.ServerInfo
+	// Build a set of all managed service names for pattern expansion.
+	allServices := a.registry.ListServices()
 
-	// Find by name or port
-	for _, srv := range servers {
-		if srv.ManagedService != nil && srv.ManagedService.Name == identifier {
-			target = srv
-			break
-		}
-		if srv.ProcessRecord != nil && fmt.Sprintf("%d", srv.ProcessRecord.Port) == identifier {
-			target = srv
-			break
+	var matched []*models.ServerInfo
+
+	for _, id := range identifiers {
+		if strings.Contains(id, "*") {
+			// Glob pattern: expand against service names
+			expanded := ExpandPatterns([]string{id}, allServices)
+			for _, name := range expanded {
+				for _, srv := range servers {
+					if srv.ManagedService != nil && srv.ManagedService.Name == name {
+						matched = append(matched, srv)
+						break
+					}
+				}
+			}
+		} else {
+			// Exact match: by name or port
+			for _, srv := range servers {
+				if srv.ManagedService != nil && srv.ManagedService.Name == id {
+					matched = append(matched, srv)
+					break
+				}
+				if srv.ProcessRecord != nil && fmt.Sprintf("%d", srv.ProcessRecord.Port) == id {
+					matched = append(matched, srv)
+					break
+				}
+			}
 		}
 	}
 
-	if target == nil {
-		return fmt.Errorf("server %q not found", identifier)
+	if len(matched) == 0 {
+		return fmt.Errorf("no servers found matching %s", strings.Join(identifiers, ", "))
 	}
 
-	return a.printServerStatus(target)
+	for _, srv := range matched {
+		if err := a.printServerStatus(srv); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // printServerStatus prints detailed status for a server

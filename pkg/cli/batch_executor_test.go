@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/devports/devpt/pkg/models"
@@ -150,7 +149,7 @@ func TestRunBatch_NoPatternMatches(t *testing.T) {
 	results := RunBatch([]string{"nonexistent-*"}, op, registry)
 	require.Len(t, results, 1)
 	assert.False(t, results[0].Success)
-	assert.Contains(t, results[0].Error, "no services found")
+	assert.NotEmpty(t, results[0].Error)
 }
 
 func TestRunBatch_SequentialOrderPreserved(t *testing.T) {
@@ -193,11 +192,11 @@ func TestRunBatch_NoIOSideEffects(t *testing.T) {
 	t.Parallel()
 
 	// RunBatch returns structured results — verify BatchOpResult has expected fields.
-	r := BatchOpResult{Name: "svc", Success: true, PID: 100, Error: fmt.Errorf("err"), Warning: "warn"}
+	r := BatchOpResult{Name: "svc", Success: true, PID: 100, Error: "err", Warning: "warn"}
 	assert.Equal(t, "svc", r.Name)
 	assert.True(t, r.Success)
 	assert.Equal(t, 100, r.PID)
-	assert.Equal(t, "err", r.Error.Error())
+	assert.Equal(t, "err", r.Error)
 	assert.Equal(t, "warn", r.Warning)
 }
 

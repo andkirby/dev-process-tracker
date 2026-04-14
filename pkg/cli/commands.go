@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/devports/devpt/pkg/health"
 	"github.com/devports/devpt/pkg/models"
@@ -20,67 +19,7 @@ func (a *App) ListCmd(detailed bool) error {
 		return err
 	}
 
-	return a.printServerTable(servers, detailed)
-}
-
-// printServerTable prints servers in tabular format
-func (a *App) printServerTable(servers []*models.ServerInfo, detailed bool) error {
-	w := tabwriter.NewWriter(a.outWriter(), 0, 0, 2, ' ', 0)
-
-	if detailed {
-		fmt.Fprintln(w, "Name\tPort\tPID\tProject\tCommand\tSource\tStatus")
-		for _, srv := range servers {
-			fmt.Fprintln(w, a.formatServerRow(srv, true))
-		}
-	} else {
-		fmt.Fprintln(w, "Name\tPort\tPID\tProject\tSource\tStatus")
-		for _, srv := range servers {
-			fmt.Fprintln(w, a.formatServerRow(srv, false))
-		}
-	}
-
-	return w.Flush()
-}
-
-// formatServerRow formats a server as a table row
-func (a *App) formatServerRow(srv *models.ServerInfo, detailed bool) string {
-	name := "-"
-	port := "-"
-	pid := "-"
-	project := "-"
-	command := "-"
-	source := string(srv.Source)
-	status := srv.Status
-
-	if srv.ManagedService != nil {
-		name = srv.ManagedService.Name
-		if len(srv.ManagedService.Ports) > 0 {
-			port = fmt.Sprintf("%d", srv.ManagedService.Ports[0])
-		}
-		command = srv.ManagedService.Command
-	}
-
-	if srv.ProcessRecord != nil {
-		pid = fmt.Sprintf("%d", srv.ProcessRecord.PID)
-		port = fmt.Sprintf("%d", srv.ProcessRecord.Port)
-		project = srv.ProcessRecord.ProjectRoot
-		if command == "-" {
-			command = srv.ProcessRecord.Command
-		}
-
-		// Determine source
-		if srv.ProcessRecord.AgentTag != nil {
-			source = fmt.Sprintf("%s:%s", srv.ProcessRecord.AgentTag.Source, srv.ProcessRecord.AgentTag.AgentName)
-		} else {
-			source = string(models.SourceManual)
-		}
-	}
-
-	if detailed {
-		return fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s\t%s", name, port, pid, project, command, source, status)
-	}
-
-	return fmt.Sprintf("%s\t%s\t%s\t%s\t%s\t%s", name, port, pid, project, source, status)
+	return PrintServerTable(a.outWriter(), servers, detailed)
 }
 
 // AddCmd registers a new managed service
@@ -495,55 +434,12 @@ func (a *App) LogsCmd(name string, lines int) error {
 	return nil
 }
 
-func isProcessFinishedErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "process already finished") || strings.Contains(msg, "no such process")
-}
-
-func managedServicePID(servers []*models.ServerInfo, serviceName string) int {
-	for _, srv := range servers {
-		if srv == nil || srv.ManagedService == nil || srv.ProcessRecord == nil {
-			continue
-		}
-		if srv.ManagedService.Name == serviceName {
-			return srv.ProcessRecord.PID
-		}
-	}
-	return 0
-}
-
-func validatedManagedPIDFromServers(
-	svc *models.ManagedService,
-	servers []*models.ServerInfo,
-	isRunning func(int) bool,
-) (int, error) {
-	if svc == nil {
-		return 0, nil
-	}
-
-	if pid := managedServicePID(servers, svc.Name); pid != 0 {
-		return pid, nil
-	}
-
-	if svc.LastPID != nil && *svc.LastPID > 0 && isRunning != nil && isRunning(*svc.LastPID) {
-		return 0, fmt.Errorf(
-			"cannot safely determine PID for service %q; stored PID is no longer validated against a live managed process",
-			svc.Name,
-		)
-	}
-
-	return 0, nil
-}
-
 func (a *App) validatedManagedPID(svc *models.ManagedService) (int, error) {
 	servers, err := a.discoverServers()
 	if err != nil {
 		return 0, err
 	}
-	return validatedManagedPIDFromServers(svc, servers, a.processManager.IsRunning)
+	return ValidateRunningPID(svc, servers, a.processManager.IsRunning)
 }
 
 // StatusCmd shows detailed info for one or more servers.
@@ -592,91 +488,23 @@ func (a *App) StatusCmd(identifiers []string) error {
 	}
 
 	for _, srv := range matched {
-		if err := a.printServerStatus(srv); err != nil {
+		var hc *health.HealthCheck
+		if srv.ProcessRecord != nil {
+			hc = a.healthChecker.Check(srv.ProcessRecord.Port)
+		}
+		if err := PrintServerStatus(a.outWriter(), srv, hc); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// printServerStatus prints detailed status for a server
+// printServerStatus prints detailed status for a server (App method wrapper).
+// Delegates to the package-level PrintServerStatus function with health check.
 func (a *App) printServerStatus(srv *models.ServerInfo) error {
-	line := "============================================================"
-	fmt.Println("\n" + line)
-	fmt.Println("SERVER DETAILS")
-	fmt.Println(line)
-
-	if srv.ManagedService != nil {
-		fmt.Printf("Name:    %s\n", srv.ManagedService.Name)
-		fmt.Printf("Command: %s\n", srv.ManagedService.Command)
-		fmt.Printf("CWD:     %s\n", srv.ManagedService.CWD)
-		fmt.Printf("Ports:   ")
-		for i, p := range srv.ManagedService.Ports {
-			if i > 0 {
-				fmt.Print(", ")
-			}
-			fmt.Printf("%d", p)
-		}
-		fmt.Println()
-	}
-
+	var hc *health.HealthCheck
 	if srv.ProcessRecord != nil {
-		fmt.Printf("\nPort:    %d\n", srv.ProcessRecord.Port)
-		fmt.Printf("PID:     %d\n", srv.ProcessRecord.PID)
-		fmt.Printf("PPID:    %d\n", srv.ProcessRecord.PPID)
-		fmt.Printf("User:    %s\n", srv.ProcessRecord.User)
-		fmt.Printf("Command: %s\n", srv.ProcessRecord.Command)
-		fmt.Printf("CWD:     %s\n", srv.ProcessRecord.CWD)
-		if srv.ProcessRecord.ProjectRoot != "" {
-			fmt.Printf("Project: %s\n", srv.ProcessRecord.ProjectRoot)
-		}
-
-		// Health check
-		dashes := "------------------------------------------------------------"
-		fmt.Println("\n" + dashes)
-		fmt.Println("HEALTH STATUS")
-		fmt.Println(dashes)
-		check := a.healthChecker.Check(srv.ProcessRecord.Port)
-		icon := health.StatusIcon(check.Status)
-		fmt.Printf("Status:   %s %s\n", icon, check.Status)
-		fmt.Printf("Response: %dms\n", check.ResponseMs)
-		fmt.Printf("Message:  %s\n", check.Message)
-
-		// Agent detection
-		if srv.ProcessRecord.AgentTag != nil {
-			fmt.Println("\n" + dashes)
-			fmt.Println("AI AGENT DETECTION")
-			fmt.Println(dashes)
-			fmt.Printf("Source:     %s\n", srv.ProcessRecord.AgentTag.Source)
-			fmt.Printf("Agent:      %s\n", srv.ProcessRecord.AgentTag.AgentName)
-			fmt.Printf("Confidence: %s\n", srv.ProcessRecord.AgentTag.Confidence)
-		}
+		hc = a.healthChecker.Check(srv.ProcessRecord.Port)
 	}
-
-	if srv.Status == "crashed" {
-		dashes := "------------------------------------------------------------"
-		fmt.Println("\n" + dashes)
-		fmt.Println("CRASH DETAILS")
-		fmt.Println(dashes)
-		if srv.CrashReason != "" {
-			fmt.Printf("Reason: %s\n", srv.CrashReason)
-		} else {
-			fmt.Println("Reason: unavailable")
-		}
-		if len(srv.CrashLogTail) > 0 {
-			fmt.Println("Recent logs:")
-			for _, line := range srv.CrashLogTail {
-				if strings.TrimSpace(line) == "" {
-					continue
-				}
-				fmt.Printf("  %s\n", line)
-			}
-		}
-	}
-
-	fmt.Printf("\nStatus:   %s\n", srv.Status)
-	fmt.Printf("Source:   %s\n", srv.Source)
-	fmt.Println(line + "\n")
-
-	return nil
+	return PrintServerStatus(a.outWriter(), srv, hc)
 }

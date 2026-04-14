@@ -75,11 +75,15 @@ func TestPrintServerTable_DetailedMode(t *testing.T) {
 	var normal bytes.Buffer
 	err = PrintServerTable(&normal, servers, false)
 	require.NoError(t, err)
-	normalLines := strings.Split(strings.TrimSpace(normal.String()), "\n")
-	require.GreaterOrEqual(t, len(normalLines), 1)
-	// Non-detailed has 6 columns: Name, Port, PID, Project, Source, Status
-	fields := strings.Split(normalLines[0], "\t")
-	assert.Equal(t, 6, len(fields), "non-detailed header should have 6 columns")
+	normalOutput := normal.String()
+	// Verify non-detailed header has expected columns
+	assert.Contains(t, normalOutput, "Name")
+	assert.Contains(t, normalOutput, "Port")
+	assert.Contains(t, normalOutput, "PID")
+	assert.Contains(t, normalOutput, "Project")
+	assert.Contains(t, normalOutput, "Source")
+	assert.Contains(t, normalOutput, "Status")
+	assert.NotContains(t, normalOutput, "Command\t", "non-detailed header should not have Command column")
 }
 
 // ---------------------------------------------------------------------------

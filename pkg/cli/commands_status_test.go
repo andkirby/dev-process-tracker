@@ -72,10 +72,13 @@ func withCrashedService(t *testing.T, reg *registry.Registry, name, command stri
 	require.NoError(t, reg.AddService(svc), "add crashed service %q", name)
 }
 
-// captureStatusOutput captures os.Stdout during fn.
-// NOTE: Must NOT be used with t.Parallel() because it redirects the global os.Stdout.
-func captureStatusOutput(fn func()) string {
-	return captureOutput(fn)
+// captureStatusOutput runs fn then returns the app's stdout buffer.
+func captureStatusOutput(app *App, fn func()) string {
+	fn()
+	if buf, ok := app.stdout.(*bytes.Buffer); ok {
+		return buf.String()
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +91,7 @@ func TestStatusCmd_ExactNameMatch(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	addManagedService(t, app.registry, "offgrid-api", "node server.js", []int{3000})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"offgrid-api"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -163,7 +166,7 @@ func TestStatusCmd_GlobPatternSingleMatch(t *testing.T) {
 	addManagedService(t, app.registry, "offgrid-api", "node server.js", []int{3000})
 	addManagedService(t, app.registry, "worker", "ruby worker.rb", []int{4000})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"offg*"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -185,7 +188,7 @@ func TestStatusCmd_GlobPatternMultipleMatches(t *testing.T) {
 	addManagedService(t, app.registry, "web-frontend", "npm start", []int{3001})
 	addManagedService(t, app.registry, "worker", "ruby worker.rb", []int{4000})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"web-*"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -222,7 +225,7 @@ func TestStatusCmd_MultipleIdentifiers(t *testing.T) {
 	addManagedService(t, app.registry, "svc1", "cmd1", []int{3001})
 	addManagedService(t, app.registry, "svc2", "cmd2", []int{3002})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"svc1", "svc2"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -244,7 +247,7 @@ func TestStatusCmd_MixedPatternAndExact(t *testing.T) {
 	addManagedService(t, app.registry, "web-frontend", "npm start", []int{3001})
 	addManagedService(t, app.registry, "worker", "ruby worker.rb", []int{4000})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"web-*", "worker"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -279,7 +282,7 @@ func TestStatusCmd_CrashedServiceStatus(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	withCrashedService(t, app.registry, "crashed-svc", "node crashing-app.js", []int{5555}, 9999)
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"crashed-svc"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -299,7 +302,7 @@ func TestStatusCmd_DuplicateIdentifiers(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	addManagedService(t, app.registry, "svc1", "cmd1", []int{3001})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"svc1", "svc1"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -315,7 +318,7 @@ func TestStatusCmd_ExactNameNotGlob(t *testing.T) {
 	addManagedService(t, app.registry, "api", "cmd1", []int{3001})
 	addManagedService(t, app.registry, "api-v2", "cmd2", []int{3002})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"api"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -333,7 +336,7 @@ func TestStatusCmd_WildcardMatchesAll(t *testing.T) {
 	addManagedService(t, app.registry, "worker", "cmd2", []int{3002})
 	addManagedService(t, app.registry, "frontend", "cmd3", []int{3003})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"*"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -352,7 +355,7 @@ func TestStatusCmd_SuffixPattern(t *testing.T) {
 	addManagedService(t, app.registry, "staging-api", "cmd2", []int{3002})
 	addManagedService(t, app.registry, "prod-worker", "cmd3", []int{3003})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"*-api"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -369,7 +372,7 @@ func TestStatusCmd_OneExactOneNotFound(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	addManagedService(t, app.registry, "existing", "cmd", []int{3000})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		err := app.StatusCmd([]string{"existing", "missing"})
 		// "existing" matches, "missing" doesn't. Since at least one match is found,
 		// the command should succeed.
@@ -385,7 +388,7 @@ func TestStatusCmd_SourceFieldInOutput(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	addManagedService(t, app.registry, "managed-svc", "cmd", []int{3000})
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.StatusCmd([]string{"managed-svc"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -423,7 +426,7 @@ func TestPrintServerStatus_ManagedRunning(t *testing.T) {
 		Status: "running",
 	}
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.printServerStatus(srv); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -456,7 +459,7 @@ func TestPrintServerStatus_CrashedWithReason(t *testing.T) {
 		},
 	}
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.printServerStatus(srv); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -484,7 +487,7 @@ func TestPrintServerStatus_CrashedNoLogs(t *testing.T) {
 		CrashLogTail: nil,
 	}
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.printServerStatus(srv); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -508,7 +511,7 @@ func TestPrintServerStatus_StoppedNoProcess(t *testing.T) {
 		Status: "stopped",
 	}
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.printServerStatus(srv); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -546,7 +549,7 @@ func TestPrintServerStatus_WithAgentTag(t *testing.T) {
 		Status: "running",
 	}
 
-	output := captureStatusOutput(func() {
+	output := captureStatusOutput(app, func() {
 		if err := app.printServerStatus(srv); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

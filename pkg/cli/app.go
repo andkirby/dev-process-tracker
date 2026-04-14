@@ -32,6 +32,10 @@ type App struct {
 
 // NewApp creates and initializes the application
 func NewApp() (*App, error) {
+	if err := scanner.CheckPrereqs(); err != nil {
+		return nil, err
+	}
+
 	config, err := models.GetConfigPaths()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get config paths: %w", err)

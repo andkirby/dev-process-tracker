@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,6 +13,60 @@ import (
 
 	"github.com/devports/devpt/pkg/models"
 )
+
+// PrereqError is returned when required external tools are missing.
+type PrereqError struct {
+	Missing []string
+	Hint    string
+}
+
+func (e *PrereqError) Error() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "missing required tool(s): %s\n", strings.Join(e.Missing, ", "))
+	if e.Hint != "" {
+		sb.WriteString(e.Hint)
+	}
+	return sb.String()
+}
+
+// CheckPrereqs verifies that all required external tools are available.
+// Returns nil if everything is present, or a PrereqError with install hints.
+func CheckPrereqs() error {
+	missing := make([]string, 0, 2)
+
+	if _, err := exec.LookPath("lsof"); err != nil {
+		missing = append(missing, "lsof")
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+
+	hint := prereqHint(missing)
+	return &PrereqError{Missing: missing, Hint: hint}
+}
+
+func prereqHint(missing []string) string {
+	switch runtime.GOOS {
+	case "linux":
+		var sb strings.Builder
+		fmt.Fprintln(&sb, "")
+		fmt.Fprintln(&sb, "Install with:")
+		// Debian/Ubuntu
+		fmt.Fprintln(&sb, "  sudo apt install lsof")
+		// Fedora/RHEL
+		fmt.Fprintln(&sb, "  # or: sudo dnf install lsof")
+		// Arch
+		fmt.Fprintln(&sb, "  # or: sudo pacman -S lsof")
+		fmt.Fprintln(&sb, "")
+		fmt.Fprintln(&sb, "devpt uses lsof to discover listening ports and match them to your services.")
+		return sb.String()
+	case "darwin":
+		return "\nlsof should be pre-installed on macOS. If missing, reinstall Xcode Command Line Tools:\n  xcode-select --install\n"
+	default:
+		return fmt.Sprintf("\nPlease install %s and ensure it is in your PATH.\n", strings.Join(missing, " and "))
+	}
+}
 
 // ProcessScanner discovers listening ports using macOS tools
 type ProcessScanner struct {

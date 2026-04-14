@@ -427,7 +427,7 @@ func TestPrintServerStatus_ManagedRunning(t *testing.T) {
 	}
 
 	output := captureStatusOutput(app, func() {
-		if err := app.printServerStatus(srv); err != nil {
+		if err := PrintServerStatus(app.outWriter(), srv, nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -460,7 +460,7 @@ func TestPrintServerStatus_CrashedWithReason(t *testing.T) {
 	}
 
 	output := captureStatusOutput(app, func() {
-		if err := app.printServerStatus(srv); err != nil {
+		if err := PrintServerStatus(app.outWriter(), srv, nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -488,7 +488,7 @@ func TestPrintServerStatus_CrashedNoLogs(t *testing.T) {
 	}
 
 	output := captureStatusOutput(app, func() {
-		if err := app.printServerStatus(srv); err != nil {
+		if err := PrintServerStatus(app.outWriter(), srv, nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -512,7 +512,7 @@ func TestPrintServerStatus_StoppedNoProcess(t *testing.T) {
 	}
 
 	output := captureStatusOutput(app, func() {
-		if err := app.printServerStatus(srv); err != nil {
+		if err := PrintServerStatus(app.outWriter(), srv, nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
@@ -550,7 +550,7 @@ func TestPrintServerStatus_WithAgentTag(t *testing.T) {
 	}
 
 	output := captureStatusOutput(app, func() {
-		if err := app.printServerStatus(srv); err != nil {
+		if err := PrintServerStatus(app.outWriter(), srv, nil); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})

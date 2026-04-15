@@ -140,45 +140,4 @@ func TestFindManagedProcessForServiceRejectsPIDOnlyMatch(t *testing.T) {
 	}
 }
 
-func TestManagedServicePIDReturnsMatchedProcess(t *testing.T) {
-	t.Parallel()
 
-	servers := []*models.ServerInfo{
-		{
-			ProcessRecord: &models.ProcessRecord{PID: 2001},
-			ManagedService: &models.ManagedService{
-				Name: "api",
-			},
-		},
-		{
-			ProcessRecord: &models.ProcessRecord{PID: 2002},
-			ManagedService: &models.ManagedService{
-				Name: "worker",
-			},
-		},
-	}
-
-	if got := managedServicePID(servers, "worker"); got != 2002 {
-		t.Fatalf("managedServicePID(..., worker) = %d, want 2002", got)
-	}
-	if got := managedServicePID(servers, "missing"); got != 0 {
-		t.Fatalf("managedServicePID(..., missing) = %d, want 0", got)
-	}
-}
-
-func TestValidatedManagedPIDFromServersRejectsUnvalidatedStoredPID(t *testing.T) {
-	t.Parallel()
-
-	lastPID := 9090
-	svc := &models.ManagedService{
-		Name:    "api",
-		LastPID: &lastPID,
-	}
-
-	_, err := validatedManagedPIDFromServers(svc, nil, func(pid int) bool {
-		return pid == lastPID
-	})
-	if err == nil {
-		t.Fatal("expected stale running stored PID to be rejected")
-	}
-}

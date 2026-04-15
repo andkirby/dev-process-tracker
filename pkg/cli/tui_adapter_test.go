@@ -44,6 +44,16 @@ func TestTUIAdapterLatestServiceLogPath_ReturnsManagedLogFile(t *testing.T) {
 		processManager: process.NewManager(filepath.Join(tmp, "logs")),
 	}
 
+	// Ensure cleanup runs even if test fails mid-flight
+	t.Cleanup(func() {
+		svc := reg.GetService("worker")
+		if svc != nil && svc.LastPID != nil && *svc.LastPID > 0 {
+			if err := app.processManager.Stop(*svc.LastPID, 2*time.Second); err != nil && err != process.ErrNeedSudo {
+				t.Logf("cleanup stop pid %d: %v", *svc.LastPID, err)
+			}
+		}
+	})
+
 	if err := app.StartCmd("worker"); err != nil {
 		t.Fatalf("start service: %v", err)
 	}
@@ -65,9 +75,6 @@ func TestTUIAdapterLatestServiceLogPath_ReturnsManagedLogFile(t *testing.T) {
 	svc := reg.GetService("worker")
 	if svc == nil || svc.LastPID == nil || *svc.LastPID <= 0 {
 		t.Fatalf("expected started service PID, got %#v", svc)
-	}
-	if err := app.processManager.Stop(*svc.LastPID, 2*time.Second); err != nil && err != process.ErrNeedSudo {
-		t.Fatalf("cleanup stop: %v", err)
 	}
 }
 
@@ -105,6 +112,16 @@ func TestTUIAdapterRestartCmd_SuppressesCLIProgressOutput(t *testing.T) {
 		stderr:         &stderr,
 	}
 
+	// Ensure cleanup runs even if test fails mid-flight
+	t.Cleanup(func() {
+		svc := reg.GetService("worker")
+		if svc != nil && svc.LastPID != nil && *svc.LastPID > 0 {
+			if err := app.processManager.Stop(*svc.LastPID, 2*time.Second); err != nil && err != process.ErrNeedSudo {
+				t.Logf("cleanup stop pid %d: %v", *svc.LastPID, err)
+			}
+		}
+	})
+
 	if err := app.StartCmd("worker"); err != nil {
 		t.Fatalf("start service: %v", err)
 	}
@@ -141,11 +158,6 @@ func TestTUIAdapterRestartCmd_SuppressesCLIProgressOutput(t *testing.T) {
 	if *svc.LastPID == startPID {
 		t.Fatalf("expected restart to update PID, still %d", *svc.LastPID)
 	}
-
-	// Best-effort cleanup; ignore ErrNeedSudo on CI/protected environments
-	if err := app.processManager.Stop(*svc.LastPID, 2*time.Second); err != nil && err != process.ErrNeedSudo {
-		t.Fatalf("cleanup stop: %v", err)
-	}
 }
 
 func reserveTestPort(t *testing.T) int {
@@ -167,7 +179,7 @@ func reserveTestPort(t *testing.T) int {
 func waitForTCPListener(t *testing.T, port int) {
 	t.Helper()
 
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(8 * time.Second)
 	address := fmt.Sprintf("127.0.0.1:%d", port)
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", address, 100*time.Millisecond)

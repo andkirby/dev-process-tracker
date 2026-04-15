@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"github.com/devports/devpt/pkg/health"
+	"github.com/devports/devpt/pkg/lifecycle"
 	"github.com/devports/devpt/pkg/models"
 	"github.com/devports/devpt/pkg/process"
 )
@@ -22,138 +23,111 @@ func (a *App) AddCmd(name, cwd, command string, ports []int) error {
 	return nil
 }
 func (a *App) RemoveCmd(name string) error { return a.registry.RemoveService(name) }
+
+// lifecycleManager returns a lifecycle.LifecycleManager wired to the App's dependencies.
+func (a *App) lifecycleManager() *lifecycle.LifecycleManager {
+	return lifecycle.NewLifecycleManager(&appDeps{app: a})
+}
+
 func (a *App) StartCmd(name string) error {
 	svc, errs := LookupServiceWithFallback(name, a.registry.ListServices())
 	if svc == nil { return fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; ")) }
-	fmt.Fprintf(a.outWriter(), "Starting %q...\n", svc.Name)
-	pid, err := a.processManager.Start(svc)
-	if err != nil { return fmt.Errorf("failed to start service: %w", err) }
-	if err := a.registry.UpdateServicePID(svc.Name, pid); err != nil {
-		fmt.Fprintf(a.errWriter(), "Warning: failed to update registry: %v\n", err)
+
+	mgr := a.lifecycleManager()
+	result := mgr.Start(svc)
+
+	fmt.Fprintln(a.outWriter(), result.Message)
+
+	if result.Outcome == lifecycle.OutcomeFailed || result.Outcome == lifecycle.OutcomeInvalid || result.Outcome == lifecycle.OutcomeBlocked {
+		return fmt.Errorf("%s", result.Message)
 	}
-	fmt.Fprintf(a.outWriter(), "Started %q\n", svc.Name)
 	return nil
 }
+
 func (a *App) StopCmd(identifier string) error {
-	var targetPID int
-	var svcName string
+	// Try to resolve as a managed service first
 	if svc, _ := LookupServiceWithFallback(identifier, a.registry.ListServices()); svc != nil {
-		svcName = svc.Name
-		pid, err := a.validatedManagedPID(svc)
-		if err != nil { return err }
-		targetPID = pid
-	} else {
-		port, err := strconv.Atoi(identifier)
-		if err != nil { return fmt.Errorf("invalid service name or port: %s", identifier) }
-		servers, err := a.discoverServers()
-		if err != nil { return err }
-		for _, srv := range servers {
-			if srv.ProcessRecord != nil && srv.ProcessRecord.Port == port {
-				targetPID = srv.ProcessRecord.PID
-				if srv.ManagedService != nil { svcName = srv.ManagedService.Name }
-				break
-			}
+		mgr := a.lifecycleManager()
+		result := mgr.Stop(svc)
+
+		fmt.Fprintln(a.outWriter(), result.Message)
+
+		if result.Outcome == lifecycle.OutcomeFailed || result.Outcome == lifecycle.OutcomeInvalid || result.Outcome == lifecycle.OutcomeBlocked {
+			return fmt.Errorf("%s", result.Message)
 		}
-		if targetPID == 0 { return fmt.Errorf("no process found on port %d", port) }
+		return nil
 	}
-	if targetPID == 0 { return fmt.Errorf("cannot determine PID to stop") }
+
+	// Fall back to raw PID stop by port (for unmanaged/manual processes)
+	port, err := strconv.Atoi(identifier)
+	if err != nil { return fmt.Errorf("invalid service name or port: %s", identifier) }
+
+	servers, err := a.discoverServers()
+	if err != nil { return err }
+
+	var targetPID int
+	for _, srv := range servers {
+		if srv.ProcessRecord != nil && srv.ProcessRecord.Port == port {
+			targetPID = srv.ProcessRecord.PID
+			break
+		}
+	}
+	if targetPID == 0 { return fmt.Errorf("no process found on port %d", port) }
+
 	fmt.Fprintf(a.outWriter(), "Stopping PID %d...\n", targetPID)
 	result := StopProcess(a.processManager, targetPID, defaultStopTimeout)
 	if result.SudoRequired { return fmt.Errorf("requires sudo to terminate PID %d", targetPID) }
-	if svcName != "" {
-		if clrErr := a.registry.ClearServicePID(svcName); clrErr != nil {
-			fmt.Fprintf(a.errWriter(), "Warning: failed to clear PID for %q: %v\n", svcName, clrErr)
-		}
-	}
 	if result.AlreadyDead { return nil }
 	if result.Stopped { fmt.Fprintf(a.outWriter(), "Process %d stopped\n", targetPID); return nil }
 	if result.ClearError != nil { return result.ClearError }
 	return fmt.Errorf("failed to stop process PID %d", targetPID)
 }
+
 func (a *App) RestartCmd(name string) error {
 	svc, errs := LookupServiceWithFallback(name, a.registry.ListServices())
 	if svc == nil { return fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; ")) }
-	pid, err := a.validatedManagedPID(svc)
-	if err != nil { return err }
-	if pid > 0 {
-		fmt.Fprintf(a.outWriter(), "Stopping service %q...\n", svc.Name)
-		result := StopProcess(a.processManager, pid, defaultStopTimeout)
-		if !result.Stopped && !result.AlreadyDead && result.ClearError != nil {
-			fmt.Fprintf(a.errWriter(), "Warning: failed to stop service: %v\n", result.ClearError)
-		}
+
+	mgr := a.lifecycleManager()
+	result := mgr.Restart(svc)
+
+	fmt.Fprintln(a.outWriter(), result.Message)
+
+	if result.Outcome == lifecycle.OutcomeFailed || result.Outcome == lifecycle.OutcomeInvalid || result.Outcome == lifecycle.OutcomeBlocked {
+		return fmt.Errorf("%s", result.Message)
 	}
-	fmt.Fprintf(a.outWriter(), "Starting %q...\n", svc.Name)
-	newPID, err := a.processManager.Start(svc)
-	if err != nil { return fmt.Errorf("failed to start service: %w", err) }
-	if err := a.registry.UpdateServicePID(svc.Name, newPID); err != nil {
-		fmt.Fprintf(a.errWriter(), "Warning: failed to update registry: %v\n", err)
-	}
-	fmt.Fprintf(a.outWriter(), "Restarted %q\n", svc.Name)
 	return nil
 }
+
 func (a *App) BatchStartCmd(names []string) error {
-	servers, _ := a.discoverServers()
-	results := RunBatch(names, func(ctx BatchContext) BatchOpResult {
-		pid, err := ValidateRunningPID(ctx.Service, servers, a.processManager.IsRunning)
-		if err != nil { return BatchOpResult{Name: ctx.Name, Warning: err.Error()} }
-		if pid > 0 { return BatchOpResult{Name: ctx.Name, Warning: fmt.Sprintf("already running (PID %d)", pid)} }
-		startPID, err := a.processManager.Start(ctx.Service)
-		if err != nil { return BatchOpResult{Name: ctx.Name, Error: fmt.Sprintf("failed to start: %v", err)} }
-		a.registry.UpdateServicePID(ctx.Service.Name, startPID)
-		return BatchOpResult{Name: ctx.Name, Success: true, PID: startPID}
-	}, a.registry)
-	return a.renderBatchResults(results)
-}
-func (a *App) BatchStopCmd(names []string) error {
-	servers, _ := a.discoverServers()
-	results := RunBatch(names, func(ctx BatchContext) BatchOpResult {
-		pid, err := ValidateRunningPID(ctx.Service, servers, a.processManager.IsRunning)
-		if err != nil { return BatchOpResult{Name: ctx.Name, Error: err.Error()} }
-		if pid == 0 { return BatchOpResult{Name: ctx.Name, Warning: "not running"} }
-		fmt.Printf("Stopping service %q (PID %d)...\n", ctx.Name, pid)
-		result := StopProcess(a.processManager, pid, defaultStopTimeout)
-		if result.SudoRequired { return BatchOpResult{Name: ctx.Name, Error: fmt.Sprintf("requires sudo (PID %d)", pid)} }
-		a.registry.ClearServicePID(ctx.Service.Name)
-		if result.AlreadyDead { return BatchOpResult{Name: ctx.Name, Success: true, Warning: "already stopped"} }
-		if result.Stopped { return BatchOpResult{Name: ctx.Name, Success: true, PID: pid} }
-		return BatchOpResult{Name: ctx.Name, Error: fmt.Sprintf("failed to stop: %v", result.ClearError)}
-	}, a.registry)
-	return a.renderBatchResults(results)
-}
-func (a *App) BatchRestartCmd(names []string) error {
-	servers, _ := a.discoverServers()
-	results := RunBatch(names, func(ctx BatchContext) BatchOpResult {
-		pid, err := ValidateRunningPID(ctx.Service, servers, a.processManager.IsRunning)
-		if err != nil { return BatchOpResult{Name: ctx.Name, Error: err.Error()} }
-		if pid > 0 {
-			fmt.Printf("Stopping service %q (PID %d)...\n", ctx.Name, pid)
-			result := StopProcess(a.processManager, pid, defaultStopTimeout)
-			if !result.Stopped && !result.AlreadyDead && result.ClearError != nil {
-				fmt.Fprintf(a.errWriter(), "Warning: failed to stop %q: %v\n", ctx.Name, result.ClearError)
-			}
-		}
-		startPID, err := a.processManager.Start(ctx.Service)
-		if err != nil { return BatchOpResult{Name: ctx.Name, Error: fmt.Sprintf("failed to start: %v", err)} }
-		a.registry.UpdateServicePID(ctx.Service.Name, startPID)
-		return BatchOpResult{Name: ctx.Name, Success: true, PID: startPID}
-	}, a.registry)
-	return a.renderBatchResults(results)
-}
-func (a *App) renderBatchResults(results []BatchOpResult) error {
-	var firstErr error
-	for _, r := range results {
-		switch {
-		case r.Error != "":
-			fmt.Fprintf(a.errWriter(), "Error: service %q: %s\n", r.Name, r.Error)
-			if firstErr == nil { firstErr = fmt.Errorf("service %q: %s", r.Name, r.Error) }
-		case r.Warning != "":
-			fmt.Fprintf(a.errWriter(), "Warning: service %q: %s\n", r.Name, r.Warning)
-		case r.Success:
-			fmt.Fprintf(a.outWriter(), "Service %q succeeded\n", r.Name)
-		}
+	mgr := a.lifecycleManager()
+	summary := RunLifecycleBatch(names, mgr.Start, a.registry)
+	fmt.Fprint(a.outWriter(), FormatBatchSummary(summary))
+	if summary.Failed > 0 || summary.Invalid > 0 || summary.NotFound > 0 {
+		return fmt.Errorf("batch start completed with %d failure(s)", summary.Failed+summary.Invalid+summary.NotFound)
 	}
-	return firstErr
+	return nil
 }
+
+func (a *App) BatchStopCmd(names []string) error {
+	mgr := a.lifecycleManager()
+	summary := RunLifecycleBatch(names, mgr.Stop, a.registry)
+	fmt.Fprint(a.outWriter(), FormatBatchSummary(summary))
+	if summary.Failed > 0 || summary.Invalid > 0 || summary.NotFound > 0 {
+		return fmt.Errorf("batch stop completed with %d failure(s)", summary.Failed+summary.Invalid+summary.NotFound)
+	}
+	return nil
+}
+
+func (a *App) BatchRestartCmd(names []string) error {
+	mgr := a.lifecycleManager()
+	summary := RunLifecycleBatch(names, mgr.Restart, a.registry)
+	fmt.Fprint(a.outWriter(), FormatBatchSummary(summary))
+	if summary.Failed > 0 || summary.Invalid > 0 || summary.NotFound > 0 {
+		return fmt.Errorf("batch restart completed with %d failure(s)", summary.Failed+summary.Invalid+summary.NotFound)
+	}
+	return nil
+}
+
 func (a *App) LogsCmd(name string, lines int) error {
 	svc, errs := LookupServiceWithFallback(name, a.registry.ListServices())
 	if svc == nil { return fmt.Errorf("service %q not found: %s", name, strings.Join(errs, "; ")) }
@@ -192,9 +166,5 @@ func (a *App) StatusCmd(identifiers []string) error {
 	}
 	return nil
 }
-func (a *App) validatedManagedPID(svc *models.ManagedService) (int, error) {
-	servers, err := a.discoverServers()
-	if err != nil { return 0, err }
-	return ValidateRunningPID(svc, servers, a.processManager.IsRunning)
-}
+
 var _ = process.ErrNeedSudo

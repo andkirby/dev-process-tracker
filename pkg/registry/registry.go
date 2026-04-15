@@ -30,6 +30,11 @@ func NewRegistry(filePath string) *Registry {
 }
 
 // Load reads the registry from disk
+// FilePath returns the registry file path.
+func (r *Registry) FilePath() string {
+	return r.filePath
+}
+
 func (r *Registry) Load() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

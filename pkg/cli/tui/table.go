@@ -20,10 +20,13 @@ type processTable struct {
 	managedListVP    viewport.Model
 	managedDetailsVP viewport.Model
 
-	lastRunningHeight int
-	lastManagedHeight int
-	lastListWidth     int
-	lastDetailsWidth  int
+	lastRunningHeight  int
+	lastManagedHeight  int
+	lastListWidth      int
+	lastDetailsWidth   int
+	lastRunningContent string
+	lastListContent    string
+	lastDetailsContent string
 }
 
 func newProcessTable() processTable {
@@ -43,13 +46,17 @@ func (t *processTable) heightFor(termHeight, aboveLines, belowLines int) int {
 }
 
 func (t *processTable) Render(m *topModel, width int) string {
+	visible := m.visibleServers()
+	managed := m.managedServices()
+	displayNames := m.displayNames(visible)
+
 	topLines := m.tableTopLines(width)
 	bottomLines := m.tableBottomLines(width)
 	totalHeight := t.heightFor(m.height, topLines, bottomLines)
-	runningContent := m.renderRunningTable(width)
-	managedHeader := m.renderManagedHeader(width)
-	listContent := m.renderManagedList(width / 2)
-	detailsContent := m.renderManagedDetails(width - width/2)
+	runningContent := m.renderRunningTable(width, visible, displayNames)
+	managedHeader := m.renderManagedHeader(width, managed)
+	listContent := m.renderManagedList(width/2, managed)
+	detailsContent := m.renderManagedDetails(width-width/2, managed)
 	runningLines := 1 + strings.Count(runningContent, "\n")
 	listLines := 1 + strings.Count(listContent, "\n")
 	detailsLines := 1 + strings.Count(detailsContent, "\n")
@@ -63,18 +70,27 @@ func (t *processTable) Render(m *topModel, width int) string {
 
 	t.runningVP.SetWidth(width)
 	t.runningVP.SetHeight(runningHeight)
-	t.runningVP.SetContent(runningContent)
+	if t.lastRunningContent != runningContent {
+		t.runningVP.SetContent(runningContent)
+		t.lastRunningContent = runningContent
+	}
 
 	t.managedListVP.SetWidth(width / 2)
 	t.managedListVP.SetHeight(managedHeight)
-	t.managedListVP.SetContent(listContent)
+	if t.lastListContent != listContent {
+		t.managedListVP.SetContent(listContent)
+		t.lastListContent = listContent
+	}
 
 	t.managedDetailsVP.SetWidth(width - width/2)
 	t.managedDetailsVP.SetHeight(managedHeight)
-	t.managedDetailsVP.SetContent(detailsContent)
+	if t.lastDetailsContent != detailsContent {
+		t.managedDetailsVP.SetContent(detailsContent)
+		t.lastDetailsContent = detailsContent
+	}
 
 	if m.tableFollowSelection {
-		t.scrollToSelection(m)
+		t.scrollToSelection(m, visible, managed)
 	}
 
 	listView := t.managedListVP.View()
@@ -190,10 +206,7 @@ func (t *processTable) sectionHeights(totalHeight, runningLines, managedLines in
 	return runningHeight, managedHeight
 }
 
-func (t *processTable) scrollToSelection(m *topModel) {
-	visible := m.visibleServers()
-	managed := m.managedServices()
-
+func (t *processTable) scrollToSelection(m *topModel, visible []*models.ServerInfo, managed []*models.ManagedService) {
 	if m.focus == focusRunning && m.selected >= 0 && m.selected < len(visible) {
 		selectedLine := 2 + m.selected
 		t.scrollViewportToLine(&t.runningVP, selectedLine)
@@ -223,9 +236,7 @@ func (t *processTable) scrollViewportToLine(vp *viewport.Model, selectedLine int
 	}
 }
 
-func (m *topModel) renderRunningTable(width int) string {
-	visible := m.visibleServers()
-	displayNames := m.displayNames(visible)
+func (m *topModel) renderRunningTable(width int, visible []*models.ServerInfo, displayNames []string) string {
 	headerStyle := lipgloss.NewStyle()
 	yellowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)  // yellow for ascending
 	orangeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Bold(true) // orange for reverse
@@ -385,8 +396,8 @@ func (m *topModel) renderRunningTable(width int) string {
 	return out
 }
 
-func (m *topModel) renderManagedHeader(width int) string {
-	text := fmt.Sprintf("Managed Services (%d) ", len(m.managedServices()))
+func (m *topModel) renderManagedHeader(width int, managed []*models.ManagedService) string {
+	text := fmt.Sprintf("Managed Services (%d) ", len(managed))
 	fillW := width - runewidth.StringWidth(text)
 	if fillW < 0 {
 		fillW = 0
@@ -398,8 +409,7 @@ func (m *topModel) renderManagedHeader(width int) string {
 // renderManagedSection is no longer used — list and details are rendered into
 // independent viewports (managedListVP, managedDetailsVP) in Render().
 
-func (m *topModel) renderManagedList(width int) string {
-	managed := m.managedServices()
+func (m *topModel) renderManagedList(width int, managed []*models.ManagedService) string {
 	if len(managed) == 0 {
 		return fitLine(`No managed services yet. Use ^A then: add myapp /path/to/app "npm run dev" 3000`, width)
 	}
@@ -472,11 +482,10 @@ func (m *topModel) renderManagedList(width int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m *topModel) renderManagedDetails(width int) string {
+func (m *topModel) renderManagedDetails(width int, managed []*models.ManagedService) string {
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 	header := headerStyle.Render("Selected service details")
 
-	managed := m.managedServices()
 	if m.managedSel < 0 || m.managedSel >= len(managed) {
 		placeholder := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("Select a managed service to inspect status")
 		return header + "\n" + fitLine(placeholder, width)
@@ -590,7 +599,17 @@ func portCell(port string, width int) string {
 	return fixedHyperlinkCell(port, "http://localhost:"+port, width)
 }
 
-func (m topModel) displayNames(servers []*models.ServerInfo) []string {
+func (m *topModel) displayNames(servers []*models.ServerInfo) []string {
+	q := strings.ToLower(strings.TrimSpace(m.currentFilterQuery()))
+	if m.cachedDisplayNames != nil &&
+		m.cachedDisplayNamesVersion == m.serversVersion &&
+		m.cachedDisplayNamesSvcVer == m.servicesVersion &&
+		m.cachedDisplayNamesQuery == q &&
+		m.cachedDisplayNamesSortBy == m.sortBy &&
+		m.cachedDisplayNamesReverse == m.sortReverse {
+		return m.cachedDisplayNames
+	}
+
 	base := make([]string, len(servers))
 	projectToSvc := make(map[string]string)
 	for _, svc := range m.app.ListServices() {
@@ -634,5 +653,11 @@ func (m topModel) displayNames(servers []*models.ServerInfo) []string {
 			out[r.idx] = fmt.Sprintf("%s~%d", name, i+1)
 		}
 	}
+	m.cachedDisplayNames = out
+	m.cachedDisplayNamesQuery = q
+	m.cachedDisplayNamesSortBy = m.sortBy
+	m.cachedDisplayNamesReverse = m.sortReverse
+	m.cachedDisplayNamesVersion = m.serversVersion
+	m.cachedDisplayNamesSvcVer = m.servicesVersion
 	return out
 }

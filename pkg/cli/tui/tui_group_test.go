@@ -959,7 +959,7 @@ func TestManagedListGroupHighlight(t *testing.T) {
 		assert.Equal(t, "api", *m.groupHighlightNamespace)
 
 		// Render the managed list pane
-		managedContent := m.renderManagedList(60)
+		managedContent := m.renderManagedList(60, m.managedServices())
 		lines := strings.Split(managedContent, "\n")
 
 		// Find the api-gateway row (non-selected, should have group highlight)
@@ -1002,7 +1002,7 @@ func TestManagedListGroupHighlight(t *testing.T) {
 		m.Update(tea.KeyPressMsg{Code: 'g'})
 		assert.Equal(t, "api", *m.groupHighlightNamespace)
 
-		managedContent := m.renderManagedList(60)
+		managedContent := m.renderManagedList(60, m.managedServices())
 		lines := strings.Split(managedContent, "\n")
 
 		// Find the web-frontend row (different namespace — should NOT have group highlight)

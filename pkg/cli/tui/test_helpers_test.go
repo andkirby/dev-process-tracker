@@ -8,9 +8,11 @@ import (
 )
 
 type fakeAppDeps struct {
-	servers  []*models.ServerInfo
-	services []*models.ManagedService
-	logPaths map[string]string
+	servers           []*models.ServerInfo
+	services          []*models.ManagedService
+	logPaths          map[string]string
+	listServicesCalls int
+	discoverCalls     int
 }
 
 func newTestModel() *topModel {
@@ -32,10 +34,12 @@ func newTestModel() *topModel {
 }
 
 func (f *fakeAppDeps) DiscoverServers() ([]*models.ServerInfo, error) {
+	f.discoverCalls++
 	return f.servers, nil
 }
 
 func (f *fakeAppDeps) ListServices() []*models.ManagedService {
+	f.listServicesCalls++
 	return f.services
 }
 

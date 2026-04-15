@@ -15,18 +15,26 @@ import (
 	"github.com/devports/devpt/pkg/process"
 )
 
-func (m topModel) countVisible() int { return len(m.visibleServers()) }
+func (m *topModel) countVisible() int { return len(m.visibleServers()) }
 
-func (m topModel) currentFilterQuery() string {
+func (m *topModel) currentFilterQuery() string {
 	if m.mode == viewModeSearch {
 		return m.searchInput.Value()
 	}
 	return m.searchQuery
 }
 
-func (m topModel) visibleServers() []*models.ServerInfo {
-	var visible []*models.ServerInfo
+func (m *topModel) visibleServers() []*models.ServerInfo {
 	q := strings.ToLower(strings.TrimSpace(m.currentFilterQuery()))
+	if m.cachedVisible != nil &&
+		m.cachedVisibleQuery == q &&
+		m.cachedVisibleSortBy == m.sortBy &&
+		m.cachedVisibleReverse == m.sortReverse &&
+		m.cachedVisibleVersion == m.serversVersion {
+		return m.cachedVisible
+	}
+
+	visible := make([]*models.ServerInfo, 0, len(m.servers))
 	for _, srv := range m.servers {
 		if srv == nil || srv.ProcessRecord == nil {
 			continue
@@ -36,33 +44,67 @@ func (m topModel) visibleServers() []*models.ServerInfo {
 				continue
 			}
 		}
-		if q != "" {
-			hay := strings.ToLower(fmt.Sprintf("%s %s %s %d %s %s",
-				m.serviceNameFor(srv), projectOf(srv), srv.ProcessRecord.Command, srv.ProcessRecord.Port, srv.ProcessRecord.CWD, srv.ProcessRecord.ProjectRoot))
-			if !strings.Contains(hay, q) {
-				continue
-			}
+		if q != "" && !matchesServerQuery(m, srv, q) {
+			continue
 		}
 		visible = append(visible, srv)
 	}
 	m.sortServers(visible)
+	m.cachedVisible = visible
+	m.cachedVisibleQuery = q
+	m.cachedVisibleSortBy = m.sortBy
+	m.cachedVisibleReverse = m.sortReverse
+	m.cachedVisibleVersion = m.serversVersion
 	return visible
 }
 
-func (m topModel) managedServices() []*models.ManagedService {
-	services := m.app.ListServices()
+func (m *topModel) managedServices() []*models.ManagedService {
 	q := strings.ToLower(strings.TrimSpace(m.currentFilterQuery()))
-	var filtered []*models.ManagedService
+	if m.cachedManaged != nil &&
+		m.cachedManagedQuery == q &&
+		m.cachedManagedVersion == m.servicesVersion {
+		return m.cachedManaged
+	}
+
+	services := m.app.ListServices()
+	filtered := make([]*models.ManagedService, 0, len(services))
 	for _, svc := range services {
 		if q == "" || strings.Contains(strings.ToLower(svc.Name+" "+svc.CWD+" "+svc.Command), q) {
 			filtered = append(filtered, svc)
 		}
 	}
 	sort.Slice(filtered, func(i, j int) bool { return strings.ToLower(filtered[i].Name) < strings.ToLower(filtered[j].Name) })
+	m.cachedManaged = filtered
+	m.cachedManagedQuery = q
+	m.cachedManagedVersion = m.servicesVersion
 	return filtered
 }
 
-func (m topModel) serviceNameFor(srv *models.ServerInfo) string {
+func matchesServerQuery(m *topModel, srv *models.ServerInfo, q string) bool {
+	var b strings.Builder
+	name := strings.ToLower(m.serviceNameFor(srv))
+	project := strings.ToLower(projectOf(srv))
+	command := strings.ToLower(srv.ProcessRecord.Command)
+	cwd := strings.ToLower(srv.ProcessRecord.CWD)
+	projectRoot := strings.ToLower(srv.ProcessRecord.ProjectRoot)
+	port := strconv.Itoa(srv.ProcessRecord.Port)
+
+	b.Grow(len(name) + len(project) + len(command) + len(port) + len(cwd) + len(projectRoot) + 5)
+	b.WriteString(name)
+	b.WriteByte(' ')
+	b.WriteString(project)
+	b.WriteByte(' ')
+	b.WriteString(command)
+	b.WriteByte(' ')
+	b.WriteString(port)
+	b.WriteByte(' ')
+	b.WriteString(cwd)
+	b.WriteByte(' ')
+	b.WriteString(projectRoot)
+	return strings.Contains(b.String(), q)
+}
+
+func (m *topModel) serviceNameFor(srv *models.ServerInfo) string {
 	if srv == nil {
 		return "-"
 	}

@@ -70,6 +70,17 @@ type topModel struct {
 	lastInput  time.Time
 	err        error
 
+	serversVersion       int
+	servicesVersion      int
+	cachedVisible        []*models.ServerInfo
+	cachedVisibleQuery   string
+	cachedVisibleSortBy  sortMode
+	cachedVisibleReverse bool
+	cachedVisibleVersion int
+	cachedManaged        []*models.ManagedService
+	cachedManagedQuery   string
+	cachedManagedVersion int
+
 	selected   int
 	managedSel int
 	focus      viewFocus
@@ -117,6 +128,14 @@ type topModel struct {
 
 	// Toggle-based visual group selection (g key)
 	groupHighlightNamespace *string
+
+	// Render caches — invalidated by refresh(), sort changes, and filter changes.
+	cachedDisplayNames        []string
+	cachedDisplayNamesQuery   string
+	cachedDisplayNamesSortBy  sortMode
+	cachedDisplayNamesReverse bool
+	cachedDisplayNamesVersion int
+	cachedDisplayNamesSvcVer  int
 }
 
 type tickMsg time.Time
@@ -169,10 +188,13 @@ func newTopModel(app AppDeps) *topModel {
 		help:                 help.New(),
 		searchInput:          searchInput,
 		tableFollowSelection: true,
+		serversVersion:       1,
+		servicesVersion:      1,
 	}
 	if servers, err := app.DiscoverServers(); err == nil {
 		m.servers = servers
 	}
+	m.invalidateCachedLists()
 
 	m.viewport = viewport.New()
 	m.table = newProcessTable()
@@ -188,6 +210,9 @@ func (m topModel) Init() tea.Cmd {
 func (m *topModel) refresh() {
 	if servers, err := m.app.DiscoverServers(); err == nil {
 		m.servers = servers
+		m.serversVersion++
+		m.servicesVersion++
+		m.invalidateCachedLists()
 		m.lastUpdate = time.Now()
 		if m.selected >= len(m.visibleServers()) && len(m.visibleServers()) > 0 {
 			m.selected = len(m.visibleServers()) - 1
@@ -203,6 +228,17 @@ func (m *topModel) refresh() {
 	} else {
 		m.err = err
 	}
+}
+
+func (m *topModel) invalidateCachedLists() {
+	m.cachedVisible = nil
+	m.cachedManaged = nil
+	m.cachedDisplayNames = nil
+	m.cachedDisplayNamesQuery = ""
+	m.cachedDisplayNamesSortBy = sortRecent
+	m.cachedDisplayNamesReverse = false
+	m.cachedDisplayNamesVersion = 0
+	m.cachedDisplayNamesSvcVer = 0
 }
 
 func tickCmd() tea.Cmd {

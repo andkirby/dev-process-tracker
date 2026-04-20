@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1
+
+- Fixed Linux crash when running as non-root by adding /proc/net/tcp fallback so lsof is no longer required
+- Refactored TUI render-path to reduce recomputation overhead
+- Aligned process lifecycle with behavioral contract for consistent start/stop/restart behavior
+- Refactored TUI commands module into focused files for maintainability
+
 ## 0.4.0
 
 - Added namespace-based process grouping so related managed services can be controlled together

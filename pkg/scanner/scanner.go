@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -31,11 +33,15 @@ func (e *PrereqError) Error() string {
 
 // CheckPrereqs verifies that all required external tools are available.
 // Returns nil if everything is present, or a PrereqError with install hints.
+// On Linux, /proc/net/tcp is accepted as an alternative to lsof.
 func CheckPrereqs() error {
 	missing := make([]string, 0, 2)
 
 	if _, err := exec.LookPath("lsof"); err != nil {
-		missing = append(missing, "lsof")
+		// On Linux, /proc/net/tcp can replace lsof for port scanning
+		if runtime.GOOS != "linux" || !procNetTCPAvailable() {
+			missing = append(missing, "lsof")
+		}
 	}
 
 	if len(missing) == 0 {
@@ -44,6 +50,11 @@ func CheckPrereqs() error {
 
 	hint := prereqHint(missing)
 	return &PrereqError{Missing: missing, Hint: hint}
+}
+
+func procNetTCPAvailable() bool {
+	_, err := os.Stat("/proc/net/tcp")
+	return err == nil
 }
 
 func prereqHint(missing []string) string {
@@ -81,22 +92,176 @@ func NewProcessScanner() *ProcessScanner {
 	}
 }
 
-// ScanListeningPorts discovers all TCP listening ports
+// ScanListeningPorts discovers all TCP listening ports.
+// Uses lsof first; on Linux falls back to /proc/net/tcp if lsof is unavailable or fails.
 func (ps *ProcessScanner) ScanListeningPorts() ([]*models.ProcessRecord, error) {
-	cmd := exec.Command("lsof", "-nP", "-iTCP", "-sTCP:LISTEN")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run lsof: %w", err)
+	// Try lsof first (works on macOS and Linux with root)
+	if _, err := exec.LookPath("lsof"); err == nil {
+		cmd := exec.Command("lsof", "-nP", "-iTCP", "-sTCP:LISTEN")
+		output, err := cmd.Output()
+		if err == nil {
+			records, parseErr := ps.parseLsofOutput(string(output))
+			if parseErr == nil {
+				ps.enrichWithCommands(records)
+				return records, nil
+			}
+			// parse failed but we got output — return what we have
+			if len(records) > 0 {
+				ps.enrichWithCommands(records)
+				return records, nil
+			}
+		}
+		// lsof failed — fall through to /proc on Linux
 	}
 
-	records, err := ps.parseLsofOutput(string(output))
-	if err != nil {
-		return records, err
+	if runtime.GOOS == "linux" {
+		records, err := ps.scanListeningPortsProc()
+		if err != nil {
+			return nil, fmt.Errorf("lsof failed and /proc/net/tcp fallback failed: %w", err)
+		}
+		return records, nil
 	}
 
-	// Enrich records with command information
+	return nil, fmt.Errorf("failed to run lsof")
+}
+
+// scanListeningPortsProc reads /proc/net/tcp (and tcp6) to find LISTEN sockets.
+// Works without root for all users on Linux.
+func (ps *ProcessScanner) scanListeningPortsProc() ([]*models.ProcessRecord, error) {
+	inodeMap, err := buildInodeToPID()
+	if err != nil {
+		// Non-fatal: we'll have ports but no PIDs
+		inodeMap = make(map[uint64]int)
+	}
+
+	records := make([]*models.ProcessRecord, 0)
+	seen := make(map[string]bool)
+
+	for _, path := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
+		file, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		scanner := bufio.NewScanner(file)
+		scanner.Scan() // skip header
+
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) < 10 {
+				continue
+			}
+
+			// State 0A = LISTEN
+			if fields[3] != "0A" {
+				continue
+			}
+
+			addrPort := strings.Split(fields[1], ":")
+			if len(addrPort) != 2 {
+				continue
+			}
+
+			port, err := strconv.ParseInt(addrPort[1], 16, 32)
+			if err != nil || port == 0 {
+				continue
+			}
+
+			inode, _ := strconv.ParseUint(fields[9], 10, 64)
+
+			pid := 0
+			command := ""
+			if inode > 0 {
+				if p, ok := inodeMap[inode]; ok {
+					pid = p
+					command = getProcCommand(p)
+				}
+			}
+
+			key := fmt.Sprintf("%d:%d", pid, port)
+			if !seen[key] {
+				seen[key] = true
+				records = append(records, &models.ProcessRecord{
+					PID:      pid,
+					Port:     int(port),
+					Command:  command,
+					Protocol: "tcp",
+				})
+			}
+		}
+		file.Close()
+	}
+
+	// Enrich with CWD where possible
 	ps.enrichWithCommands(records)
 	return records, nil
+}
+
+// buildInodeToPID scans /proc/<pid>/fd/ to map socket inodes to PIDs.
+// Only works for processes owned by the current user.
+func buildInodeToPID() (map[uint64]int, error) {
+	result := make(map[uint64]int)
+
+	procDir, err := os.Open("/proc")
+	if err != nil {
+		return nil, err
+	}
+	defer procDir.Close()
+
+	entries, err := procDir.Readdirnames(-1)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, name := range entries {
+		pid, err := strconv.Atoi(name)
+		if err != nil {
+			continue
+		}
+
+		fdDir := filepath.Join("/proc", name, "fd")
+		fdEntries, err := os.ReadDir(fdDir)
+		if err != nil {
+			// Permission denied for other users' processes — skip silently
+			continue
+		}
+
+		for _, fd := range fdEntries {
+			link, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
+			if err != nil {
+				continue
+			}
+			// Socket links look like: socket:[12345]
+			if !strings.HasPrefix(link, "socket:[") {
+				continue
+			}
+			inodeStr := strings.TrimSuffix(strings.TrimPrefix(link, "socket:["), "]")
+			inode, err := strconv.ParseUint(inodeStr, 10, 64)
+			if err != nil {
+				continue
+			}
+			result[inode] = pid
+		}
+	}
+
+	return result, nil
+}
+
+// getProcCommand reads /proc/<pid>/cmdline to get the process command.
+func getProcCommand(pid int) string {
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
+	if err != nil {
+		return ""
+	}
+	// cmdline is null-byte separated
+	parts := strings.Split(string(data), "\x00")
+	if len(parts) == 0 || parts[0] == "" {
+		return ""
+	}
+	return parts[0]
 }
 
 // parseLsofOutput parses lsof output into ProcessRecords
@@ -208,6 +373,17 @@ func (ps *ProcessScanner) getCWD(pid int) (string, bool) {
 		return cached, true
 	}
 	ps.mu.RUnlock()
+
+	// On Linux, read /proc/<pid>/cwd symlink directly — no lsof needed
+	if runtime.GOOS == "linux" {
+		link, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "cwd"))
+		if err == nil && link != "" {
+			ps.mu.Lock()
+			ps.cwdCache[pid] = link
+		ps.mu.Unlock()
+			return link, true
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()

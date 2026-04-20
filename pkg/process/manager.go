@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -251,31 +252,58 @@ func (m *Manager) TailProcess(pid int, lines int) ([]string, error) {
 }
 
 func (m *Manager) pickProcessLogFile(pid int) (string, bool) {
-	cmd := exec.Command("lsof", "-nP", "-p", strconv.Itoa(pid), "-Fn")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", false
+	var candidates []string
+
+	// On Linux, read /proc/<pid>/fd/ directly — works without lsof/root
+	if runtime.GOOS == "linux" {
+		fdDir := filepath.Join("/proc", strconv.Itoa(pid), "fd")
+		entries, err := os.ReadDir(fdDir)
+		if err == nil {
+			for _, ent := range entries {
+				link, err := os.Readlink(filepath.Join(fdDir, ent.Name()))
+				if err != nil {
+					continue
+				}
+				lower := strings.ToLower(link)
+				if !strings.Contains(lower, ".log") && !strings.Contains(lower, "/log") {
+					continue
+				}
+				fi, statErr := os.Stat(link)
+				if statErr != nil || fi.IsDir() {
+					continue
+				}
+				candidates = append(candidates, link)
+			}
+		}
 	}
 
-	var candidates []string
-	for _, line := range strings.Split(string(output), "\n") {
-		if !strings.HasPrefix(line, "n") {
-			continue
+	// If no candidates from /proc (or not Linux), try lsof
+	if len(candidates) == 0 {
+		cmd := exec.Command("lsof", "-nP", "-p", strconv.Itoa(pid), "-Fn")
+		output, err := cmd.Output()
+		if err != nil {
+			return "", false
 		}
-		path := strings.TrimSpace(strings.TrimPrefix(line, "n"))
-		if path == "" {
-			continue
+		for _, line := range strings.Split(string(output), "\n") {
+			if !strings.HasPrefix(line, "n") {
+				continue
+			}
+			path := strings.TrimSpace(strings.TrimPrefix(line, "n"))
+			if path == "" {
+				continue
+			}
+			lower := strings.ToLower(path)
+			if !strings.Contains(lower, ".log") && !strings.Contains(lower, "/log") {
+				continue
+			}
+			fi, statErr := os.Stat(path)
+			if statErr != nil || fi.IsDir() {
+				continue
+			}
+			candidates = append(candidates, path)
 		}
-		lower := strings.ToLower(path)
-		if !strings.Contains(lower, ".log") && !strings.Contains(lower, "/log") {
-			continue
-		}
-		fi, statErr := os.Stat(path)
-		if statErr != nil || fi.IsDir() {
-			continue
-		}
-		candidates = append(candidates, path)
 	}
+
 	if len(candidates) == 0 {
 		return "", false
 	}
